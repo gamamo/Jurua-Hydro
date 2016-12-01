@@ -4,8 +4,6 @@
 # contact: gamamo@utu.fi
 
 
-getwd()
-
 # load the relevant packages
 
 library(vegan)
@@ -67,9 +65,14 @@ geoID <- read.csv("geoID.csv")
                                  "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_hand"]),2),")")
     }
     
-
+    getwd()
+    
+    file <- paste(getwd(),"outputs","table1.csv",sep="/")
+    write.csv(table1, file)
+    
 # graph relative topo x relative srtm and hand differences ####
   # first create a table with the differences
+  # then create the graphic and export to pdf  
     
   statsminmaxdiff <- data.frame(
         statsminmax$transect,
@@ -79,18 +82,80 @@ geoID <- read.csv("geoID.csv")
         )
   colnames(statsminmaxdiff) <- c("transect", "diff_topo", "diff_srtm", "diff_hand")
   
-    plot(statsminmaxdiff$diff_topo, statsminmaxdiff$diff_srtm, pch=19, col="gray", xlab = "relative topographic differences",
-       ylab = "relative remote sensing differences", ylim = c(0,40), xlim = c(0,40))
-          r <- lm(statsminmaxdiff$diff_srtm~statsminmaxdiff$diff_topo)
-          predict.lm(r)
-          lines(x=c(1,40), y=c(min(predict.lm(r)),max(predict.lm(r))),col="gray")
+#here is the command for the graphic
+  
+  #save in the folder "outputs"
+  
+  getwd()
+  setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+  
+  #run the plot
+  
+  file <- paste(getwd(),"outputs","figure_relative_diff.pdf",sep="/") #always check if the file is getting saved 
+  mfrow <- c(1,1)
+  pdf(file=file, height = 7*mfrow[1], width = 8*mfrow[2])
+  par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+  
+    plot(statsminmaxdiff$diff_topo, statsminmaxdiff$diff_srtm, pch=19, col="black", xlab = "relative topographic differences",
+       ylab = "relative remote sensing differences", ylim = c(0,40), xlim = c(0,40),cex.lab=1.5)
+          r1 <- lm(statsminmaxdiff$diff_srtm~statsminmaxdiff$diff_topo)
+          predict.lm(r1)
+          lines(x=c(1,40), y=c(min(predict.lm(r1)),max(predict.lm(r1))),col="black")
     par(new=T)
-    plot(statsminmaxdiff$diff_topo, statsminmaxdiff$diff_hand, pch=19, col="red", ylim = c(0,40), xlim = c(0,40), xlab="",
+    plot(statsminmaxdiff$diff_topo, statsminmaxdiff$diff_hand, pch=19, col="gray", ylim = c(0,40), xlim = c(0,40), xlab="",
        ylab = "")
-          abline(lm(statsminmaxdiff$diff_topo~statsminmaxdiff$diff_hand), col="red")
-    legend("bottomright", legend = c("SRTM", "HAND"), text.col = c("gray","red"),bty = "n", cex=2)
-    
-    
-  
-  
+          r2 <- lm(statsminmaxdiff$diff_hand~statsminmaxdiff$diff_topo)
+          predict.lm(r2)
+          lines(x=c(1,40), y=c(min(predict.lm(r2)),max(predict.lm(r2))),col="gray")
+    legend("bottomright", legend = c(paste("SRTM","-","R2",round(summary(r1)$r.squared,2)), 
+                                     paste("HAND","-","R2",round(summary(r2)$r.squared,2))),
+           text.col = c("black","gray"),bty = "n", cex=1.3)
+  dev.off()   
 
+# PART 2: importing species data, run ordinations and moisture indexes ####
+  
+  # import species data
+  # this table were generated in a script called "script_preparacao_sp_analises.R"
+  # the files are in the folder "dados floristicos originais"
+  # navigate to that directory
+  
+  getwd()
+
+  fern25 <- read.csv("ferns25_widetableNE.csv"     , stringsAsFactors = FALSE)
+        fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
+      
+  zing25 <- read.csv("zingdata_wide_gmm_v1.csv"    , stringsAsFactors = FALSE)
+        zing25 <- zing25[-which(rowSums(zing25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences      
+  
+  palm25 <- read.csv("palms_jurua_subunit_gmm1.csv", stringsAsFactors = FALSE) # no need to delete rows for the palms: checked before
+            rowSums(palm25[,-c(1:2)])
+            
+    species25list <- list(fern25, zing25, palm25) # creat a list if the species data
+
+    
+  # run the NMDS ordinations
+  # first calculate the relative abundances
+  # then run the NMDS and store the first 2 axis of each plant group in a separate list
+    library(vegan)
+    
+    listnmds <- list()
+    
+    for (i in seq(length(species25list))){
+      
+      dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "pa",1), method = "bray")
+      mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
+                         weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
+      listnmds[[i]] <- scores(mds.ab)[,c(1:2)]  
+      
+    }
+
+  # call the environmental data
+  # each plant object has a differene number of rows. It has to be adequated in the environmental data  
+    
+    HAND
+    SRTM
+    topo
+    geoID
+    geolist
+ 
+    length(HAND[,1])
