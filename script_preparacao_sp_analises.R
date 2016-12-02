@@ -25,11 +25,19 @@ library(vegan)
                     str(zingdata)
                     zingdata$quant <- as.numeric(zingdata$quant)   # transform the species abundances in numeric
                     zingdata$id_1  <- tolower(zingdata$id_1)       # transform species id to lowercase to avoid spelling errors
-                
+                    
+                    #fix zings subunits numbers: from 1:100 to 1:20
+                    newsubunitnamezing <- matrix(seq(1,100), ncol = 20) # create a matrix with numbers to be related
+                    
+                    #run the replace looping
+                    for(i in seq(1,20)){
+                      zingdata$sub_plot[which(zingdata$sub_plot %in% newsubunitnamezing[,i])] <- i
+                    }
+                    
                 zingwide <- dcast(zingdata, transecto + sub_plot ~ id_1, value.var = "quant", fun.aggregate = sum)  #species table: long to wide
                   zingwide <- zingwide[,-which(colnames(zingwide)=="na")]         # delete subplots without species
-                
-                #change transects number to homogenized all datasets
+
+                  #change transects number to homogenized all datasets
                   transectsseq <- seq(738,777) 
                 
                     #looping to change replace values  

@@ -115,24 +115,26 @@ geoID <- read.csv("geoID.csv")
 # PART 2: importing species data, run ordinations and moisture indexes ####
   
   # import species data
-  # this table were generated in a script called "script_preparacao_sp_analises.R"
+  # these species tables were generated in a script called "script_preparacao_sp_analises.R"
   # the files are in the folder "dados floristicos originais"
   # navigate to that directory
   
   getwd()
+  setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
 
   fern25 <- read.csv("ferns25_widetableNE.csv"     , stringsAsFactors = FALSE)
         fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
+        fern25 <- fern25[-c(795,1210),] # this 2 subunits were deleted because were too weird. Have to check it again
       
   zing25 <- read.csv("zingdata_wide_gmm_v1.csv"    , stringsAsFactors = FALSE)
-        zing25 <- zing25[-which(rowSums(zing25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences      
+        #zing25 <- zing25[-which(rowSums(zing25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences      
   
   palm25 <- read.csv("palms_jurua_subunit_gmm1.csv", stringsAsFactors = FALSE) # no need to delete rows for the palms: checked before
             rowSums(palm25[,-c(1:2)])
             
     species25list <- list(fern25, zing25, palm25) # creat a list if the species data
 
-    
+
   # run the NMDS ordinations
   # first calculate the relative abundances
   # then run the NMDS and store the first 2 axis of each plant group in a separate list
@@ -142,7 +144,7 @@ geoID <- read.csv("geoID.csv")
     
     for (i in seq(length(species25list))){
       
-      dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "pa",1), method = "bray")
+      dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "total",1), method = "bray")
       mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
                          weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
       listnmds[[i]] <- scores(mds.ab)[,c(1:2)]  
@@ -157,5 +159,35 @@ geoID <- read.csv("geoID.csv")
     topo
     geoID
     geolist
- 
-    length(HAND[,1])
+  
+  #  graphic 1: total NMDS x HAND
+    
+    graphnames <- c("Ferns","Zings","Palms")
+    par(mfrow = c(1,3))
+    for(i in seq((listnmds))){
+      plot(HAND[rownames(species25list[[i]]),"handnew"],listnmds[[i]][,1], xlab = "HAND", ylab = "NMDS",
+           pch=19, col="gray",main = graphnames[i],ylim = c(-3,3))
+    }
+
+    
+    
+  # graphic 2: NMDS x HAND per subunit
+  # NMDS for each geoformation has to be generated again  
+    library(vegan)
+    
+    listnmdsgeo <- list()
+    
+    for(g in seq(length(geolist))){
+          for (i in seq(length(species25list))){
+
+      dist.ab <- vegdist(decostand(species25list[[i]][which(match(species25list[[i]][,1],geolist[[g]])>0),-c(1:2)]
+                                   , method = "total",1), method = "bray")
+      mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
+                         weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
+      listnmdsgeo[[i]] <- scores(mds.ab)[,c(1:2)]  
+          
+      }
+    }
+    
+    species25list[[1]][which(match(species25list[[1]][,1],geolist[[1]])>0),-c(1:2)]
+    
