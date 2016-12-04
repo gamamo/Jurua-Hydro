@@ -70,7 +70,7 @@ geoID <- read.csv("geoID.csv")
     file <- paste(getwd(),"outputs","table1.csv",sep="/")
     write.csv(table1, file)
     
-# graph relative topo x relative srtm and hand differences ####
+# graph 1: relative topo x relative srtm and hand differences ####
   # first create a table with the differences
   # then create the graphic and export to pdf  
     
@@ -112,7 +112,7 @@ geoID <- read.csv("geoID.csv")
            text.col = c("black","gray"),bty = "n", cex=1.3)
   dev.off()   
 
-# PART 2: importing species data, run ordinations and moisture indexes ####
+# importing species data, run ordinations and plot against environmental variables ####
   
   # import species data
   # these species tables were generated in a script called "script_preparacao_sp_analises.R"
@@ -152,7 +152,7 @@ geoID <- read.csv("geoID.csv")
     }
 
   # call the environmental data
-  # each plant object has a differene number of rows. It has to be adequated in the environmental data  
+  # each plant object has a different number of rows. It has to be adequated in the environmental data  
     
     HAND
     SRTM
@@ -160,34 +160,115 @@ geoID <- read.csv("geoID.csv")
     geoID
     geolist
   
-  #  graphic 1: total NMDS x HAND
+  #  graphic 2: total NMDS1 x HAND ####
     
     graphnames <- c("Ferns","Zings","Palms")
     par(mfrow = c(1,3))
     for(i in seq((listnmds))){
-      plot(HAND[rownames(species25list[[i]]),"handnew"],listnmds[[i]][,1], xlab = "HAND", ylab = "NMDS",
+      plot(HAND[rownames(species25list[[i]]),"handnew"],listnmds[[i]][,"MDS1"], xlab = "HAND", ylab = "NMDS",
            pch=19, col="gray",main = graphnames[i],ylim = c(-3,3))
     }
 
     
     
-  # graphic 2: NMDS x HAND per subunit
+  # graphic 3: NMDS1 x HAND per geoformation ####
   # NMDS for each geoformation has to be generated again  
+  # they will be stored in a list
+    
     library(vegan)
     
     listnmdsgeo <- list()
     
-    for(g in seq(length(geolist))){
-          for (i in seq(length(species25list))){
+    for(g in seq(length(geolist))){                 #loop over the geo formations
+          for (i in seq(length(species25list))){    #loop over the plant groups
 
       dist.ab <- vegdist(decostand(species25list[[i]][which(match(species25list[[i]][,1],geolist[[g]])>0),-c(1:2)]
                                    , method = "total",1), method = "bray")
       mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
                          weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
-      listnmdsgeo[[i]] <- scores(mds.ab)[,c(1:2)]  
-          
+     if (g==1)
+     {listnmdsgeo[[i]]  <- scores(mds.ab)[,c(1:2)]}
+     if (g==2)
+     {listnmdsgeo[[i+3]]<- scores(mds.ab)[,c(1:2)]}
+     if (g==3)  
+     {listnmdsgeo[[i+6]]<- scores(mds.ab)[,c(1:2)]}    
       }
     }
+    names(listnmdsgeo) <- c("fern_ica","zing_ica","palm_ica",
+                            "fern_soli","zing_soli","palm_soli",
+                            "fern_ter","zing_ter","palm_ter")
     
-    species25list[[1]][which(match(species25list[[1]][,1],geolist[[1]])>0),-c(1:2)]
+    # graphic 2: NMDS1 x per subunit per geo formation. Use the rownames of the listnmdsgeo to get the exaclty rows for each species group
+    # in each geoformation
+    
+    graphnames2 <- names(listnmdsgeo)
+    par(mfrow = c(3,3))
+    
+    for (i in seq(length(listnmdsgeo))) {
+      plot(HAND[rownames(listnmdsgeo[[i]]),"handnew"],listnmdsgeo[[i]][,"MDS1"],xlab = "HAND", ylab = "NMDS",
+           pch = 19, col = "gray", main = graphnames2[i])
+    }
+    
+# import the moisture indexes and plot them against environmental variables ####
+    
+    getwd()
+    setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+    
+    HAND
+    SRTM
+    topo
+    geoID
+    geolist
+    
+    fernsMI <- read.csv("MIferns_persubunit.csv")
+    zingsMI <- read.csv("MIzing_persubunit.csv")
+    palmsMI <- read.csv("MIpalm_persubunit.csv")
+    
+    # creat a list with all the MIs
+    
+    MIlist <- list(fernsMI, zingsMI, palmsMI)
+    names(MIlist) <- c("fernsMI","zingsMI", "palmsMI")
+    
+    # graphic 4: plot MI x HAND total ####
+    
+    graphnames <- c("Ferns","Zings","Palms")
+    par(mfrow = c(1,3))
+    for(i in seq((MIlist))){
+      plot(HAND[rownames(MIlist[[i]]),"handnew"],MIlist[[i]][,"MI"], xlab = "HAND", ylab = "MI",
+           pch=19, col="gray",main = graphnames[i],ylim = c(0,2))
+    }
+    
+    # plot MI x HAND per geo formation
+    # first creat a list of MI per species per geo
+    
+    MIlistgeo <- list()
+
+    for(g in seq(geolist)){
+       for(i in seq(MIlist)){
+        subsetMIlist <- MIlist[[i]][which(match(MIlist[[i]][,"TrNumber"],geolist[[g]])>0),]
+        if (g==1)
+        {MIlistgeo[[i]]  <- subsetMIlist}
+        if (g==2)
+        {MIlistgeo[[i+3]]<- subsetMIlist}
+        if (g==3)  
+        {MIlistgeo[[i+6]]<- subsetMIlist}    
+      }
+    }
+    names(MIlistgeo) <- c("MIferns_ica", "MIzings_ica", "MIpalms_ica",
+                            "MIferns_sol", "MIzings_sol", "Mipalms_sol",
+                            "MIferns_ter", "MIzings_ter", "MIpalms_ter")
+
+    
+    # graphic 5: MI x HAND per geo formation ####
+    
+    graphnames3 <- names(MIlistgeo)
+    par(mfrow = c(3,3))
+    
+    for (i in seq(length(MIlistgeo))) {
+      plot(HAND[rownames(MIlistgeo[[i]]),"handnew"],MIlistgeo[[i]][,"MI"],xlab = "HAND", ylab = "MI",
+           pch = 19, col = "gray", main = graphnames3[i])
+    }
+    
+    
+    
     

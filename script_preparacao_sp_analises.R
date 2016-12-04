@@ -79,6 +79,7 @@ library(vegan)
                   zingdata[zingdata$id_1==zingclass$zingspnames[i],"moistureindex"] <- zingclass$MI[i]
                 }
               
+       
               # cast the zingdata 
                     
                     zingwideMI <- dcast(zingdata, transecto + sub_plot ~ id_1, value.var = "moistureindex", fun.aggregate = sum)  #species table: long to wide
@@ -90,22 +91,21 @@ library(vegan)
                     
                     zingwideMIsp <- zingwideMI[,-c(1:2)]
                     zingwideMIsp[zingwideMIsp>0] <- 2     # all the values higher than 2 will be turned to 2. This is because a species can have two occurrences
-                                                      # in a sinlge subtransect, making the index 4.    
+                                                          # in a sinlge subtransect, making the index 4.    
                     
                     
                     relabuzing <- decostand(zingwide[,-c(1:2)], method = "total",na.rm=T )
                     moistureindextablezing <- relabuzing*zingwideMIsp
                       moistureindextablezing <- cbind(zingwide[,c(1:2)],moistureindextablezing)
                     
-                    write.table(moistureindextablezing,"moistureindextablezing.csv",sep=",",col.names = TRUE)  # save a csv file
-                    
                     MIzing <- cbind(moistureindextablezing[,c(1:2)],rowSums(moistureindextablezing[,-c(1:2)]))
                       colnames(MIzing)[3] <- "MI"   #change the name of the moisture index column
                       
-                      
+                    # save the files in the folder "Analyses"
+                        
                     getwd()
                     setwd("..")
-                    write.csv(MIzing, "MIzing_persubunit.csv")  # save a csv file
+                    write.csv(MIzing, "MIzing_persubunit.csv")  
                     
       
 ############################# ferns  ##########################
@@ -189,7 +189,7 @@ library(vegan)
               moistureindextable <- relabu*widetableNEMIsp
 
               MIfernsNE <- cbind(widetableNEMI[,1:2], rowSums(moistureindextable[,-c(1:2)]))
-                colnames(MIferns)[3] <- "MI"  
+                colnames(MIfernsNE)[3] <- "MI"  
 
               # save the files in the folder "Analyses"
               
