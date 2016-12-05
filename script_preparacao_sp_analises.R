@@ -141,6 +141,14 @@ library(vegan)
               # Eliminate unidentified species observations
               sp_data <- sp_data[sp_data$SpCode!="",]
               
+              # replace subunits names: there were two subunits with negative values and one with 0
+              unique(sp_data$subunit)
+              sp_data[sp_data$subunit=="-1","subunit"] <- 19
+              sp_data[sp_data$subunit=="-2","subunit"] <- 20
+              
+              which(sp_data$subunit==0)
+              sp_data <- sp_data[-which(sp_data$subunit==0),]
+              
               # associate a moisture index and the epiphyte/non-epiphyte classification
               # creat two empty columns
               
