@@ -88,8 +88,7 @@ geoID <- read.csv("geoID.csv")
         colnames(statsminmaxdiff) <- c("transect", "diff_topo", "diff_srtm", "diff_hand")
         
         #here is the command for the graphic
-        
-        #save in the folder "outputs"
+          #save in the folder "outputs"
         
         getwd()
         setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
@@ -99,7 +98,8 @@ geoID <- read.csv("geoID.csv")
         file <- paste(getwd(),"outputs","figure_relative_diff.pdf",sep="/") #always check if the file is getting saved 
         mfrow <- c(1,1)
         pdf(file=file, height = 7*mfrow[1], width = 8*mfrow[2])
-        par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
         
           plot(statsminmaxdiff$diff_topo, statsminmaxdiff$diff_srtm, pch=19, col="black", xlab = "relative topographic differences",
              ylab = "relative remote sensing differences", ylim = c(0,40), xlim = c(0,40),cex.lab=1.5)
@@ -154,6 +154,8 @@ geoID <- read.csv("geoID.csv")
        # calculate species optima and toleraces to the HAND gradient
         library(rioja)
         library(palaeoSig)
+        library(plyr)
+        library(dplyr)
         
         listrelabutotal     <- list()
         listrelabutotalHAND <- list()
@@ -166,6 +168,15 @@ geoID <- read.csv("geoID.csv")
           
         # graphic 2: species tolerances along the HAND gradient ####
         
+        getwd()       # sabe in the folder "outputs
+        setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+        
+        file <- paste(getwd(),"outputs","figure_species_tolerances.pdf",sep="/") #always check if the file is getting saved 
+        mfrow <- c(1,3)
+        pdf(file=file, height = 7*mfrow[1], width = 8*mfrow[2])
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(1,1,2,0.5), oma=c(1,1,.5,0.5), mgp=c(1.7,0.6,0))
+        
         graphnamesopt <- names(species25list)
         par(mfrow = c(1,3))
         for(i in seq(length(listrelabutotal))){
@@ -175,6 +186,7 @@ geoID <- read.csv("geoID.csv")
           centipede.plot(fit_25, main=graphnamesopt[[i]])
 
         }
+        dev.off()
 
 
        # run the NMDS ordinations
@@ -205,14 +217,22 @@ geoID <- read.csv("geoID.csv")
         }
     
         
+        
+        file <- paste(getwd(),"outputs","figure_totalnmds.pdf",sep="/") #always check if the file is getting saved 
+        mfrow <- c(1,3)
+        pdf(file=file, height = 7*mfrow[1], width = 8*mfrow[2])
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        
         graphnames <- c("Ferns","Zings","Palms")
         par(mfrow = c(1,3))
         for(i in seq((listnmdstotal))){
           plot(HANDsubsettotal[[i]][,"handnew"],listnmdstotal[[i]][,"MDS1"], xlab = "HAND", ylab = "NMDS",
-               pch=19, col="gray",main = graphnames[i],ylim = c(-3,3))
+               pch=19, col="gray",main = graphnames[i],ylim = c(-3,3),cex.lab=1.8,cex.main=1.8)
         }
     
-    
+        dev.off()
+        
       # graphic 4: NMDS1 x HAND per geoformation ####
       # NMDS for each geoformation has to be generated again  
       # they will be stored in a list
@@ -261,15 +281,23 @@ geoID <- read.csv("geoID.csv")
         # graphic 5: NMDS1 x per subunit per geo formation ####
         #obs: there is weird nmds1 value for ferns_terrace: check!!!
         
+        
+        file <- paste(getwd(),"outputs","figure_nmdspergeo.pdf",sep="/") #always check if the file is getting saved 
+        mfrow <- c(3,3)
+        pdf(file=file, height = 5*mfrow[1], width = 6*mfrow[2])
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        
+        
         graphnames2 <- names(listnmdsgeo)
         par(mfrow = c(3,3))
         
         for (i in seq(length(listnmdsgeo))) {
           
           plot(HANDsubsetgeo[[i]][,"handnew"],listnmdsgeo[[i]][,"MDS1"],xlab = "HAND", ylab = "NMDS",
-               pch = 19, col = "gray", main = graphnames2[i])
+               pch = 19, col = "gray", main = graphnames2[i],cex.lab=1.8,cex.main=1.8)
         }
-        
+        dev.off()
     
 # import the moisture indexes and plot them against environmental variables ####
         
@@ -301,12 +329,20 @@ geoID <- read.csv("geoID.csv")
         }
         
         
+        file <- paste(getwd(),"outputs","figure_MItotal.pdf",sep="/") #always check if the file is getting saved 
+        mfrow <- c(1,3)
+        pdf(file=file, height = 5*mfrow[1], width = 6*mfrow[2])
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        
         graphnames <- c("Ferns","Zings","Palms")
         par(mfrow = c(1,3))
         for(i in seq((MIlist))){
           plot(HANDsubsetMI[[i]][,"handnew"],MIlist[[i]][,"MI"], xlab = "HAND", ylab = "MI",
-               pch=19, col="gray",main = graphnames[i],ylim = c(0,2))
+               pch=19, col="gray",main = graphnames[i],ylim = c(0,2),cex.lab=1.8,cex.main=1.8)
         }
+        
+        dev.off()
         
         # plot MI x HAND per geo formation
         # first creat a list of MI per species per geo
@@ -350,12 +386,19 @@ geoID <- read.csv("geoID.csv")
         graphnames3 <- names(MIlistgeo)
         par(mfrow = c(3,3))
         
+        
+        file <- paste(getwd(),"outputs","figure_MIpergeo.pdf",sep="/") #always check if the file is getting saved 
+        mfrow <- c(3,3)
+        pdf(file=file, height = 5*mfrow[1], width = 6*mfrow[2])
+        #par(mfrow=mfrow, mar=c(0.2,0.8,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+        
         for (i in seq(length(MIlistgeo))) {
           plot(HANDsubsetgeoMI[[i]][,"handnew"], MIlistgeo[[i]][,"MI"],xlab = "HAND", ylab = "MI",
-               pch = 19, col = "gray", main = graphnames3[i])
+               pch = 19, col = "gray", main = graphnames3[i],cex.lab=1.8,cex.main=1.8)
         }
 
-        
+        dev.off()
         
         ### testes
         
