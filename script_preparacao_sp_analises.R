@@ -20,6 +20,7 @@ library(vegan)
 
                 getwd()
                 setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses/dados floristicos originais")
+                setwd("C:/workspace gabriel/hidrologia do jurua/Analyses/dados floristicos originais")
                 zingdata <- read.csv("Zing_jurua_database.csv",stringsAsFactors=FALSE)
                 
                     str(zingdata)
@@ -181,6 +182,7 @@ library(vegan)
               #select only epiphytes from the widetables
                       
                       widetableNE <-  widetable[,nonepiphytes$SpCode]
+                      widetableNE <-  widetable                      #if this line is on, it does not remove the epiphytes
                       widetableNE <- cbind(widetable[1:2],widetableNE)
                               
                       
@@ -191,10 +193,12 @@ library(vegan)
               widetableNEMIsp <- widetableNEMI[,-c(1:2)]
               widetableNEMIsp[widetableNEMIsp>0] <- 2
               widetableNEMI <- cbind(widetableNEMI[,c(1:2)], widetableNEMIsp)
+              write.csv(widetableNEMI,"MIferns_persubunit_raw.csv",row.names = FALSE)
               
               #calculate the moisture index
               relabu <- decostand(widetableNE[,-c(1:2)], method = "total",na.rm=TRUE )
               moistureindextable <- relabu*widetableNEMIsp
+              
 
               MIfernsNE <- cbind(widetableNEMI[,1:2], rowSums(moistureindextable[,-c(1:2)]))
                 colnames(MIfernsNE)[3] <- "MI"  
@@ -205,7 +209,7 @@ library(vegan)
                 setwd("..")  
                 
               write.csv(MIfernsNE, "MIferns_persubunit.csv")
-              write.csv(widetableNE, "ferns25_widetableNE.csv") 
+              write.csv(widetableNE, "ferns25_widetableNE.csv",row.names = FALSE) 
    
 
 ########################### palms #############################

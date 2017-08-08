@@ -3,18 +3,18 @@
       # owner: Gabriel Massaine Moulatlet
       # contact: gamamo@utu.fi
       
+      rm(list = ls())
       
       # load the relevant packages
       
       library(vegan)
       library(ggplot2)
       library(lme4)
-      library(GGally)
+      library(car)
       library(plyr)
-      library(dplyr)
       library(nlme)
-      library(effects)
-      
+      library(mvpart)
+
       # this script starts with the preparation of table that gets the relative elevational of the transects in each
       # geological formation, then come the graphics that relate environment and species
       
@@ -22,13 +22,13 @@
       
       getwd()
       setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses/dados ambientais originais")
-      dir()
+      #setwd("C:/workspace gabriel/hidrologia do jurua/Analyses/dados ambientais originais")
       
-      rm(list = ls())
+      dir()
       
       topo  <- read.csv("srtm_topography.csv",stringsAsFactors = F)
       geoID <- read.csv("geoID.csv", stringsAsFactors = FALSE)
-      
+  
       
       HAND  <- read.csv("hands_srtmnovo.csv",stringsAsFactors = F)
         colnames(HAND)[2:3] <- c("TrNumber", "subunit") #change names of HAND columns
@@ -101,7 +101,9 @@
           }
       #end of envi table preparition  
         
-        
+        # find relative topographic differences of each transect
+          reldiff <- function(x) max(x)-min(x)
+          reltopodiff <- tapply(topo$topography,topo$TrNumber,reldiff)
         
         # subset transects per geological formations
         solimoes <- geoID[which(geoID$surface == "Pebas"  ),"transect"]
@@ -155,7 +157,6 @@
       # graph 1: relative topo x relative srtm and hand differences ####
         # first create a table with the differences
         # then create the graphic and then export as pdf
-        # then create a dicionary that contains the order of topogaphic differences  
           
               statsminmaxdiff <- data.frame(
                     statsminmax$transect,
@@ -164,17 +165,12 @@
                     statsminmax$max_hand - statsminmax$min_hand
                     )
               colnames(statsminmaxdiff) <- c("transect", "diff_topo", "diff_srtm", "diff_hand")
-              statsminmaxdifford <- statsminmaxdiff[order(statsminmaxdiff$diff_topo,decreasing = TRUE),]
-              
-              dici_topodiff <- data.frame(statsminmaxdifford$transect,statsminmaxdifford$diff_topo)
-              colnames(dici_topodiff) <- c("TrNumber","topo")
-              dici_topodiff$topodifford <- as.numeric(seq(1:length(dici_topodiff[,1])))
               
               #here is the command for the graphic
                 #save in the folder "outputs"
               
               getwd()
-              setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+              setwd("C:/workspace gabriel/hidrologia do jurua/Analyses")
               
               #run the plot
               
@@ -208,11 +204,13 @@
             # navigate to that directory
             
             getwd()
+            #setwd("C:/workspace gabriel/hidrologia do jurua/Analyses")
             setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
           
             fern25 <- read.csv("ferns25_widetableNE.csv"     , stringsAsFactors = FALSE)
                   fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
-                  fern25 <- fern25[-c(795,1210),] # this 2 subunits were deleted because were too weird. Have to check it again
+                  #fern25 <- fern25[-c(795,1210),] # this 2 subunits were deleted because were too weird. Have to check it again
+                  head(fern25)
                 
             zing25 <- read.csv("zingdata_wide_gmm_v1.csv"    , stringsAsFactors = FALSE)
                   #zing25 <- zing25[-which(rowSums(zing25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences      
@@ -220,11 +218,11 @@
             palm25 <- read.csv("palms_jurua_subunit_gmm1.csv", stringsAsFactors = FALSE) # no need to delete rows for the palms: checked before
                       rowSums(palm25[,-c(1:2)])
                       
-              species25list <- list(fern25, zing25, palm25) # creat a list if the species data
+              species25list <- list(fern25, zing25, palm25) # creat a list of the species data
               names(species25list) <- c("ferns", "zings", "palms")
               
-           # import the moisture in
-              
+           # import the moisture index
+              if(FALSE){
             getwd()
             setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
 
@@ -237,7 +235,7 @@
               
               MIlist <- list(fernsMI, zingsMI, palmsMI)
               names(MIlist) <- c("fernsMI","zingsMI", "palmsMI")
-              
+              }
 
              # call the environmental data
              # each plant object has a different number of rows. It has to be adequated in the environmental data: use the join::plyr 
@@ -260,7 +258,7 @@
                 listrelabutotalENVI[[i]] <- join(species25list[[i]], envi, by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
               }
               
-            
+            if(FALSE){
               #join the MI LIST with the "listrelabutotalENVI"
               
               listrelabutotalENVImi <- list()
@@ -268,8 +266,9 @@
               for(i in seq(1:3)){
               listrelabutotalENVImi[[i]] <- join(listrelabutotalENVI[[i]], MIlist[[i]], by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
               }
-                
+            }
 
+              if(FALSE){
               # graphic 2: species tolerances along the HAND gradient ####
               
               getwd()       # sabe in the folder "outputs
@@ -291,7 +290,7 @@
       
               }
               dev.off()
-      
+              }
       
              # run the NMDS ordinations
              # first calculate the relative abundances
@@ -301,16 +300,20 @@
           
               
               listnmdstotal <- list()
+              par(mfrow=c(1,3))
               
               for (i in seq(length(species25list))){
                 
-                dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "total",1), method = "bray")
-                mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
+                dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "pa",1), method = "bray")
+                mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=5),k = 5, model = "global", threshold = 0.8, maxit = 200, 
                                    weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
-                listnmdstotal[[i]] <- cbind(species25list[[i]][c(1:2)], scores(mds.ab)[,c(1:2)])
+                stressplot(mds.ab)
+                goodness(mds.ab)
+                listnmdstotal[[i]] <- cbind(species25list[[i]][c(1:2)], scores(mds.ab)[,c(1:5)])
                 
               }
               
+          
             
             #  graphic 3: total NMDS1 x HAND ####
               
