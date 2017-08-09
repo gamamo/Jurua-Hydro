@@ -14,6 +14,7 @@
       library(dplyr)
       library(nlme)
       library(effects)
+      library(car)
       
       # this script starts with the preparation of table that gets the relative elevational of the transects in each
       # geological formation, then come the graphics that relate environment and species

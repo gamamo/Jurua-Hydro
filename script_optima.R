@@ -21,6 +21,7 @@ optimaAll <- read.csv("otimosALL_gm.csv",sep=";",stringsAsFactors = FALSE)
   opt <- optimaAll[optimaAll$spcode %in% colnames(fern25),]
   length(opt[,1])
   head(opt)
+  unique(opt$spcode)
   
   fern25_opt <- fern25_sel[,which(colnames(fern25_sel) %in% opt$spcode==TRUE)]
   colnames(fern25_opt)

@@ -21,6 +21,10 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
         trvector <- as.factor(unique(hand53_ream_01$tr))
         trvector <- trvector[!trvector %in% toexclude]
         trvector  <- as.numeric(as.vector(unique(trvector)))
+        
+        #number of transects in the analysis
+        length(unique(trvector))
+        71-length(unique(trvector))
 
 #rodar o nmds for all the transects
 
@@ -135,6 +139,7 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     #to plot
     toplot <- cbind(fern_mds,hand53_ream_m0_sel,topo_sel$topo)
       colnames(toplot)[21] <- "topo"
+      length(toplot[,1])
       
     toplot$TrNumber <- as.factor(toplot$TrNumber)
     head(toplot)
@@ -158,6 +163,7 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       toplot$topodifford <- as.factor(toplot$topodifford )
       #toplot$drain       <- as.factor(toplot$drain)
       head(toplot)
+      summary(toplot)
       
       subset(toplot,toplot$topodifford==14)
       
@@ -197,8 +203,9 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       
 
       #FINAL MODEL
-      mf2.lme <- lme(MDS1~hand*decli*drain, random = ~1+hand|TrNumber,method = "REML" ,data=toplot);summary(mf2.lme)
-      plot(allEffects(mf2.lme))
+      mf2.lme <- lme(MDS1~hand*decli, random = ~1+hand +surface|TrNumber,method = "REML" ,data=toplot);summary(mf2.lme)
+      plot(allEffects(mf2.lme),rug=FALSE)
+      summary(Anova(mf2.lme))
 
       #correlations between observations from the same tr
       0.943766^2/(0.943766^2+0.3449088^2)
@@ -208,9 +215,10 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       F2  <- fitted(mf2.lme) 
       plot(F2,Ef2)
       boxplot(Ef2~TrNumber, data=toplot)
+      boxplot(Ef2~surface, data=toplot)
       abline(0,0)
       
-      plot(mf2.lme, megageo~resid(.),abline=c(0,0))
+      plot(mf2.lme, surface~resid(.),abline=c(0,0))
       plot(mf2.lme, resid(., type="p")~fitted(.)|TrNumber)
       plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
       
@@ -248,6 +256,7 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
   #model HAND and SOIL FERTILITY
   
     head(solo_hand)
+    length(solo_hand[,1])
   
     m1 <- lm(MDS1 ~ hand*sum_of_basis*decli, data = solo_hand )
     summary(m1)
@@ -259,11 +268,17 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     summary(m.gls)
     
     ### MODELO FINAL
-    m1.lme <- lme(MDS1 ~ hand+log(sum_of_basis), random = ~1|TrNumber, data = solo_hand)
-    summary(m1.lme)
-    plot(allEffects(m1.lme))
+    m1.lme <- lme(MDS1 ~ hand+log(sum_of_basis), random = ~1+surface|TrNumber, method = "ML",data = solo_hand)
     
-    anova(m.gls,m1.lme)
+    #model with interaction
+    m1.lme.int <- lme(MDS1 ~ hand*log(sum_of_basis), random = ~1+surface|TrNumber,  method = "ML",data = solo_hand)
+    summary(m1.lme)
+    summary(m1.lme.int)
+    
+    plot(allEffects(m1.lme))
+    Anova(m1.lme)
+    
+    anova(m1.lme.int,m1.lme)
     
     E2 <- resid(m1.lme, type="normalized")
     F2 <- fitted(m1.lme)
@@ -272,7 +287,11 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     abline(0,0)
     plot(log(solo_hand$sum_of_basis),E2)
     plot(solo_hand$hand,E2)
-
+    
+    plot(m1.lme, surface~resid(.),abline=c(0,0))
+    plot(m1.lme, resid(., type="p")~fitted(.)|TrNumber)
+    plot(m1.lme, MDS1 ~fitted(.)|TrNumber )
+    
 
   
   # regression tree
