@@ -639,7 +639,7 @@
               aic_melas <- AIC(mf2.lme)
               hidro_output_melas <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
               
-              #validation
+              #validation 
               Ef2 <- resid(mf2.lme)
               F2  <- fitted(mf2.lme) 
               plot(F2,Ef2)
