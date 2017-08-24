@@ -1,0 +1,762 @@
+      # Jurua analyses
+      # this script will be used to run the analyses of the Jurua top-hydro paper
+      # owner: Gabriel Massaine Moulatlet
+      # contact: gamamo@utu.fi
+      
+      
+      # load the relevant packages
+      
+      library(vegan)
+      library(ggplot2)
+      library(lme4)
+      library(plyr)
+      library(dplyr)
+      library(nlme)
+      library(effects)
+      library(car)
+      library(pROC)
+      library(mvpart)
+      library(rioja)
+      library(palaeoSig)
+      library(rpart)
+      library(visreg)
+      library(gamlss)
+      library(raster)
+      library(sp)
+      library(rgdal)
+      library(sjPlot)
+      library(coefplot)
+      
+
+   
+      
+      # this script starts with the preparation of table that gets the relative elevational of the transects in each
+      # geological formation, then come the graphics that relate environment and species
+      
+###################################### load the environmental data ####
+      
+      rm(list = ls())
+      
+      getwd()
+      setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses/dados ambientais originais")
+      #setwd("F:/workspace gabriel/Hidrologia do jurua/Analyses/dados ambientais originais") 
+      dir()
+      
+      
+      
+      #load GEO list
+      geoID <- read.csv("geoID.csv", stringsAsFactors = FALSE)
+        geoID[which(geoID$surface=="Terrace"),"surface"] <- "Rivers Terraces"
+        geoID[which(geoID$surface=="Pebas"),"surface"] <- "Solimões formation"
+        geoID[which(geoID$surface=="Hills"),"surface"] <- "Içá formation"
+        colnames(geoID)[1:2] <- c("trname","tr")
+      
+      #load solos    
+      solo  <- read.csv("soil_results_GMM_v3_forR.csv",stringsAsFactors = F)
+        colnames(solo)[2:3] <- c("TrNumber", "subunit")
+
+                #solo, from 1:100 to 1:20
+                newsubunitnamesolo<- matrix(seq(1,100), ncol = 20) # create a matrix with numbers to be related
+                
+                #run the replace looping
+                for(i in seq(1,20)){
+                  solo$subunit[which(solo$subunit %in% newsubunitnamesolo[,i])] <- i
+                }  
+      
+      #load the topography data
+        topography <- read.csv("topography.csv", header = TRUE, sep = ",", dec = ".", na.strings = NA)
+        head(topography)
+            
+            #identify which transects do not have topo measurments
+            topography[which(topography$sub==0 & topography$topo==0),]
+            # transects 780,794,806,807,808 need to be discarted
+            ex <- c(780,794,806,807,808)
+            
+            topography <- topography[!topography$tr %in% ex,]
+        
+                dist <- c(1:20 * 25)
+                
+                #interpolate the topography to each 25 m
+                listtopointerpolation <- list()
+                for (k in unique(topography$tr)){
+                  topo_sel <- subset(topography, topography$tr==k)
+                  topoapprox <- approx(topo_sel$sub,topo_sel$topo,dist)
+                  
+                  matrixtopo <- matrix(NA, ncol=3, nrow = length(topoapprox$y))
+                  matrixtopo[,1] <- topoapprox$y
+                  matrixtopo[,2] <- rep(k, times=length(topoapprox$y))
+                  matrixtopo[,3] <- rep(1:20)
+                  numerator <- which(unique(topography$tr)==k)
+                  listtopointerpolation[[numerator]] <- matrixtopo
+                }
+                
+                topo_sel <- ldply(listtopointerpolation,data.frame)
+                
+                colnames(topo_sel) <- c("topo","trnumber","sub")
+                
+      #setwd("C:/workspace gabriel/hidrologia do jurua/camilo R script june 2017")
+      #setwd("F:/workspace gabriel/Hidrologia do jurua/camilo R script june 2017")
+      setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/camilo R script june 2017")
+        dir()
+        SRTM <-raster("SRTM_JURUA_1arc_rec.tif")
+        
+        #Load the bilinear extractions made in R by Camilo
+      hand53_ream_m0 <-  read.csv("transect_adjust_m0_ream_hand.csv",sep = ";")  
+          head(hand53_ream_m0)
+          hand53_ream_m0$sub <- rep(seq(1:20),length(unique(hand53_ream_m0$tr)))
+      hand53_ream_01<-  read.csv("transect_adjust_01_ream_hand.csv",sep = ";")  
+          head( hand53_ream_01)
+        
+          #coordinates(hand53_ream_m0) <- c("lat","lon")
+          srtm_alt <- extract(SRTM,cbind(hand53_ream_m0$lon,hand53_ream_m0$lat),method="bilinear" )
+          hand53_ream_m0 <- cbind(hand53_ream_m0,srtm_alt)
+          
+################################# prepare envi table ####
+          
+      tr <- seq(738,808)
+          envi <- list()
+          for(i in unique(tr)){
+            envi[[i]]<- rep(i, times=20)
+          }
+          envi <- ldply(envi,data.frame)
+          colnames(envi) <- "tr"
+
+          envi$sub <- NA
+          envi$LOI <- NA
+          envi$pH  <- NA
+          envi$Ca  <- NA
+          envi$K   <- NA
+          envi$Mg  <- NA
+          envi$Na  <- NA
+          envi$sum_of_basis <- NA
+          envi$Al  <- NA
+          envi$P   <- NA
+          envi$surface <- NA
+          envi$topo <- NA
+          envi$lon <- NA
+          envi$lat  <- NA
+          envi$hand <- NA
+          envi$area_c <- NA  
+          envi$decli <- NA
+          envi$drain <- NA
+          envi$max_drain <- NA
+          envi$soloslinearint <- NA
+          envi$solostopoint <- NA
+          envi$srtm_alt    <- NA
+      
+      #assign sub information
+          for(i in unique(envi$tr)){
+            envi[envi$tr==i,"sub"] <- seq(1:20)
+          }
+          
+         
+          
+      #associate soil properties to envi
+          for(i in unique(envi$tr)){
+            for(g in unique(envi$sub)){
+                if(nrow(solo[solo$TrNumber==i & solo$subunit==g,])>0){
+                  envi[envi$tr==i & envi$sub==g,
+                       c("LOI","pH","Ca","K","Mg","Na","sum_of_basis","Al","P")] <- solo[solo$TrNumber==i & solo$subunit==g,
+                                                                                         c("LOI","pH","Ca","K","Mg","Na","sum_of_basis","Al","P")]
+                }else{
+                  envi[envi$tr==i & envi$sub==g,c("LOI","pH","Ca","K","Mg","Na","sum_of_basis","Al","P")] <- NA
+                  }
+                }
+          }
+          
+      # interpolated sum of basis
+          listsolointerpolation <- list()
+          for (i in unique(solo$TrNumber)){
+            solo_sel <- subset(solo, solo$TrNumber==i)
+            soloapprox <- approx(solo_sel$subunit*25,solo_sel$sum_of_basis,dist,method = "linear",rule=2)
+            soloapprox2 <- spline(solo_sel$subunit*25,solo_sel$sum_of_basis,xout=topo_sel[topo_sel$trnumber==k,"topo"],method = "natural")
+          
+            matrixsolo <- matrix(NA, ncol=4, nrow = length(soloapprox$y))
+            matrixsolo[,1] <- soloapprox$y
+            matrixsolo[,2] <- soloapprox2$y
+            matrixsolo[,3] <- rep(i, times=length(soloapprox$y))
+            matrixsolo[,4] <- rep(1:20)
+            numerator <- which(unique(solo$TrNumber)==i)
+            listsolointerpolation[[numerator]] <- matrixsolo
+          }
+          unlistsolos <- ldply(listsolointerpolation,data.frame)  
+          colnames(unlistsolos) <- c("soloslinearint","solostopoint","trnumber","sub")
+          
+          
+          for (i in unique(unlistsolos$trnumber)){
+            envi[envi$tr==i, "soloslinearint"] <- unlistsolos[unlistsolos$trnumber==i,"soloslinearint"]
+            envi[envi$tr==i, "solostopoint"] <- unlistsolos[unlistsolos$trnumber==i,"solostopoint"]
+          }
+
+      #associate geo surface info to envi
+          for (i in unique(envi$tr)){
+            envi[envi$tr==i, "surface"] <- geoID[geoID$tr==i,"surface"]
+          }
+          
+      #associate topo to envi
+          for (i in unique(topo_sel$trnumber)){
+            envi[envi$tr==i, "topo"] <- topo_sel[topo_sel$trnumber==i,"topo"]
+          }
+          
+      #associate hand data
+          for (i in unique(hand53_ream_m0$tr)){
+            envi[envi$tr==i, c("lon","lat","hand","area_c","decli", "drain", "max_drain","srtm_alt")] <- hand53_ream_m0[hand53_ream_m0$tr==i,
+                                                                                                              c("lon","lat","hand",
+                                                                                                                "area_c","decli", "drain", "max_drain",
+                                                                                                                "srtm_alt")]
+          }
+          
+
+      #associate Truni info   
+          envi$Truni <- as.numeric(paste(envi$tr,envi$sub,sep = "")) 
+      
+      #colnames change
+          colnames(envi)[1:2] <- c("TrNumber","subunit")
+          
+      #transects to exclude ####
+          toexclude <- as.factor(c(743,742,745,764,765,770,775,784,785,805))
+          trvector <- as.factor(envi$TrNumber)
+          trvector <- trvector[!trvector %in% toexclude]
+          trvector  <- as.numeric(as.vector(unique(trvector)))
+          
+          envi <- envi[envi$TrNumber %in% trvector,]
+
+          
+# end of envi table preparition  
+                
+################################################# table 1: relative elevation differences per geological formations ####
+          
+            # subset transects per geological formations
+            solimoes <- envi[which(envi$surface == "Solimões formation"  ),"TrNumber"]
+            ica      <- envi[which(envi$surface == "Içá formation"       ),"TrNumber"]
+            terraces <- envi[which(envi$surface == "Rivers Terraces"     ),"TrNumber"]
+            geolist  <- list(ica, solimoes, terraces) # this list is important for the loops below
+                
+                statsminmax <- data.frame (
+                        aggregate(envi$topo, list(envi$TrNumber), min         )[,1:2],
+                        aggregate(envi$topo, list(envi$TrNumber), max         )[,-1 ],
+                        aggregate(envi$topo, list(envi$TrNumber), mean        )[,-1 ],
+                        aggregate(envi$hand, list(envi$TrNumber), min         )[,-1 ],
+                        aggregate(envi$hand, list(envi$TrNumber), max         )[,-1 ],
+                        aggregate(envi$hand, list(envi$TrNumber), mean        )[,-1 ],
+                        aggregate(envi$sum_of_basis, list(envi$TrNumber), min ,na.rm=TRUE )[,-1 ],
+                        aggregate(envi$sum_of_basis, list(envi$TrNumber), max ,na.rm=TRUE )[,-1 ],
+                        aggregate(envi$sum_of_basis, list(envi$TrNumber), mean,na.rm=TRUE)[,-1 ],
+                        aggregate(envi$decli, list(envi$TrNumber), min        )[,-1 ],
+                        aggregate(envi$decli, list(envi$TrNumber), max        )[,-1 ],
+                        aggregate(envi$decli, list(envi$TrNumber), mean       )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), min        )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), max        )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), mean       )[,-1 ],
+                        aggregate(envi$soloslinearint, list(envi$TrNumber), min        )[,-1 ],
+                        aggregate(envi$soloslinearint, list(envi$TrNumber), max        )[,-1 ],
+                        aggregate(envi$soloslinearint, list(envi$TrNumber), mean       )[,-1 ]
+                )
+              
+                colnames(statsminmax) <- c("transect", "min_topo" , "max_topo", "mean_topo", "min_hand", "max_hand" , "mean_hand",
+                                           "min_cation", "max_cation" , "mean_cation","min_slope", "max_slope" , "mean_slope",
+                                           "min_srtm", "max_srtm" , "mean_srtm","min_soloint", "max_soloint" , "mean_soloint")
+                
+                
+                table1 <- matrix(data = NA, nrow = 3, ncol = 6) # creat the table 
+                  rownames(table1) <- c("Içá formation" , "Solimões formation", "Rivers Terraces")
+                  colnames(table1) <- c("Field Topography" , "Soil Moisture (HAND)", "Soil Fertility (Cation concentration)", "Slope",
+                                        "SRTM","Cation concentration (interpolated values)")
+                 
+                  
+                  for(i in 1:3){
+                          table1[i,1] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_topo"]  ,na.rm = TRUE),2),
+                                              "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_topo"],na.rm = TRUE),2),
+                                              "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_topo"],na.rm = TRUE),2),")")
+                          
+                          table1[i,2] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_hand"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_hand"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_hand"],na.rm = TRUE),2),")")
+                          
+                          table1[i,3] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_cation"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_cation"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_cation"],na.rm = TRUE),2),")")
+                          
+                          table1[i,4] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_slope"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_slope"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_slope"],na.rm = TRUE),2),")")
+                          
+                          table1[i,5] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_srtm"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_srtm"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_srtm"],na.rm = TRUE),2),")")
+                          
+                          table1[i,6] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_soloint"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_soloint"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_soloint"],na.rm = TRUE),2),")")
+                  }
+                  print(table1)
+                  
+                  setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+                  #setwd("F:/workspace gabriel/Hidrologia do jurua/Analyses") 
+                  
+                  write.csv(table1, "RESUtable2.csv",row.names = TRUE)
+                  
+#end of table 1
+                  
+############################################################  calculate differences wihin transects ####      
+
+        # first create a table with the differences
+        # then create a dicionary that contains the order of topogaphic differences  
+          
+              statsminmaxdiff <- data.frame(
+                    statsminmax$transect,
+                    statsminmax$max_topo - statsminmax$min_topo,
+                    statsminmax$max_hand - statsminmax$min_hand
+                    )
+              colnames(statsminmaxdiff) <- c("transect", "diff_topo", "diff_hand")
+              statsminmaxdifford <- statsminmaxdiff[order(statsminmaxdiff$diff_topo,decreasing = TRUE),]
+              
+              dici_topodiff <- data.frame(statsminmaxdifford$transect,statsminmaxdifford$diff_topo)
+                    colnames(dici_topodiff) <- c("TrNumber","topo")
+                    dici_topodiff$topodifford <- as.numeric(seq(1:length(dici_topodiff[,1])))
+              
+# end of table diff within transects              
+
+########################################################## importing species data and prepare a list with envi of each species group ####
+        
+            # import species data
+            # these species tables were generated in a script called "script_preparacao_sp_analises.R"
+            # the original files are in the folder "dados floristicos originais"
+            
+            #setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+          
+            fern25 <- read.csv("ferns25_widetableWE.csv"     , stringsAsFactors = FALSE)
+                  fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
+                  
+                  #exclude weird subunits
+                  id <- seq(1:length(fern25[,1]))
+                  ex <- cbind(fern25,id)
+                  ex1 <- ex[ex$TrNumber=="777" & ex$subunit=="15","id"] # bizarra no mds
+                  ex2 <- ex[ex$TrNumber=="798" & ex$subunit=="12","id"] # bizarra no mds
+                  ex3 <- ex[ex$TrNumber=="766" & ex$subunit==c("1","2"),"id"] #outliers de hand
+                  ex4 <- ex[ex$TrNumber=="788" & ex$subunit=="1","id"]  #outliers de hand
+                  ex5 <- ex[ex$TrNumber=="802" & ex$subunit=="19","id"] #outliers de hand
+                  ex6 <- ex[ex$TrNumber=="777" & ex$subunit=="16","id"] #outliers de hand
+                  exx <- c(ex1,ex2,ex3,ex4,ex5,ex6)
+                  
+                  fern25 <- fern25[-exx,] 
+                  fern25 <- fern25[fern25$TrNumber %in% trvector,]
+                  
+                  
+                
+            zing25 <- read.csv("zingdata_wide_gmm_v1.csv"    , stringsAsFactors = FALSE)
+                  zing25 <- zing25[zing25$TrNumber %in% trvector,]
+            
+
+            palm25 <- read.csv("palms_jurua_subunit_gmm1.csv", stringsAsFactors = FALSE) # no need to delete rows for the palms: checked before
+                  palm25 <- palm25[palm25$TrNumber %in% trvector,]
+                  
+            melas25 <- read.csv("Mel_Jurua_5x25m_table_gmm.csv", stringsAsFactors = FALSE)    
+                  melas25 <- melas25[melas25$TrNumber %in% trvector,]
+                    temp <- melas25[,-c(1:2)]
+                    which(rowSums(temp)!=0)
+                  melas25 <- melas25[which(rowSums(temp)!=0),]
+                  
+                  if(F){
+                  #exclude weird subunits
+                  id <- seq(1:length(melas25[,1]))
+                  ex <- cbind(melas25,id)
+                  ex1 <- ex[ex$TrNumber=="793" & ex$subunit=="14","id"] # bizarra no mds
+                  ex2 <- ex[ex$TrNumber=="798" & ex$subunit=="9","id"] # bizarra no mds
+                  ex3 <- ex[ex$TrNumber=="776" & ex$subunit=="2","id"]
+                  ex4 <- ex[ex$TrNumber=="751" & ex$subunit=="3","id"]
+                  ex5 <- ex[ex$TrNumber=="789" & ex$subunit=="16","id"]
+                  
+                  exx <- c(ex1,ex2,ex3,ex4,ex5)
+                  
+                  
+                  melas25 <- melas25[-exx,] 
+                  }
+            # creat a list if the species data             
+              species25list <- list(fern25, zing25, palm25,melas25) 
+             
+              names(species25list) <- c("Ferns", "Zingiberales", "Arecaceae","Melastomataceae")
+              
+            #how many species?
+              length(fern25[,-c(1:2)])
+              length(fern25[,1])
+              length(zing25[,-c(1:2)])
+              length(palm25[,-c(1:2)])
+              length(melas25[,-c(1:2)])
+
+            # join all species into a single dataframe
+              
+              join1 <- join(fern25, zing25 ,by = c("TrNumber","subunit"), type = "inner", match = "all")
+              join2 <- join(join1 , palm25 ,by = c("TrNumber","subunit"), type = "inner", match = "all")
+              join3 <- join(join2 , melas25,by = c("TrNumber","subunit"), type = "inner", match = "all")
+
+              speciesall <- join3
+              speciesall_tomodel <- speciesall[,-c(1:2)]
+              speciesall_tomodel_pa  <- decostand(speciesall_tomodel, method = "pa",   1)   #to transform to PA
+              
+            # join species and envi in a dataframe
+              
+              speciesenvi <- join(speciesall, envi,by = c("TrNumber","subunit"), type = "inner", match = "all" )
+              
+              dd <- cbind(speciesenvi$Adian.term,speciesenvi$surface)
+              dd[order(dd[,1],decreasing = T),]
+
+            # call the environmental data
+            # each plant object has a different number of rows. It has to be adequated in the environmental data: use the join::plyr 
+            # calculate species optima and toleraces to the HAND gradient
+              
+              listrelaabutotal <- list() #only abu
+              listspENVI       <- list() #join abu and envi
+              listspENVIpa     <- list() #join pa  and envi
+              
+              
+              for(i in seq(length(species25list))){
+                sprela <- decostand(species25list[[i]][-c(1:2)], method = "total",1)   #to calculate relative abundances
+                sppa   <- decostand(species25list[[i]][-c(1:2)], method = "pa",   1)   #to transform to PA
+                
+                listrelaabutotal[[i]] <- sprela
+                listspENVI[[i]]       <- join(species25list[[i]], envi, by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
+                listspENVIpa[[i]]     <- join(cbind(species25list[[i]][c(1:2)],sppa), envi, by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
+              }
+
+#end of species importing and envi matching
+
+
+###################################################################### Run ordinations e prepare the table for the analysis #####
+      
+      
+             # run the NMDS ordinations
+             # first calculate the relative abundances
+             # then run the NMDS and store the first 2 axis of each plant group in a separate list
+       
+              listnmdsab <- list()
+              listnmdspa <- list()
+              
+              for (i in seq(length(species25list))){
+                dist.ab <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "total",1), method = "bray")
+                mds.ab  <- monoMDS(dist.ab, y = cmdscale(dist.ab, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
+                                   weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
+                temp <- cbind(species25list[[i]][c(1:2)],scores(mds.ab)[,1:2])
+                listnmdsab[[i]] <- temp
+                
+                dist.pa <- vegdist(decostand(species25list[[i]][-c(1:2)], method = "pa",1), method = "bray")
+                mds.pa  <- monoMDS(dist.pa, y = cmdscale(dist.pa, k=2),k = 2, model = "global", threshold = 0.8, maxit = 200, 
+                                   weakties = TRUE, stress = 1, scaling = TRUE, pc = TRUE, smin = 1e-4, sfgrmin = 1e-7, sratmax=0.99999) 
+                temp <- cbind(species25list[[i]][c(1:2)],scores(mds.pa)[,1:2])
+                listnmdspa[[i]]<-  temp
+              }
+            
+             
+              #join ENVI and List of NMDS
+              listNMDSenviab <- list()
+              listNMDSenvipa <- list()
+              
+              for (i in seq(length(listnmdsab))){
+                listNMDSenviab[[i]] <- join(listnmdsab[[i]], envi, by = c("TrNumber","subunit"), type = "left", match = "all")
+                listNMDSenvipa[[i]] <- join(listnmdspa[[i]], envi, by = c("TrNumber","subunit"), type = "left", match = "all")
+              }
+
+              listNMDSenviab[[1]]$group <- rep("Ferns", length( listNMDSenviab[[1]][,1]))
+              listNMDSenviab[[2]]$group <- rep("Zingiberales" , length( listNMDSenviab[[2]][,1]))
+              listNMDSenviab[[3]]$group <- rep("Arecaceae"    , length( listNMDSenviab[[3]][,1]))
+              listNMDSenviab[[4]]$group <- rep("Melastomataceae", length(listNMDSenviab[[4]][,1]))
+              
+              listNMDSenvipa[[1]]$group <- rep("Ferns", length( listNMDSenvipa[[1]][,1]))
+              listNMDSenvipa[[2]]$group <- rep("Zingiberales" , length( listNMDSenvipa[[2]][,1]))
+              listNMDSenvipa[[3]]$group <- rep("Arecaceae"    , length( listNMDSenvipa[[3]][,1]))
+              listNMDSenvipa[[4]]$group <- rep("Melastomataceae", length(listNMDSenvipa[[4]][,1]))
+              
+      
+              #put the dataframes together instead of having as a list
+              
+              unlistlistNMDSenviab <- dplyr::bind_rows(listNMDSenviab[[1]],listNMDSenviab[[2]],listNMDSenviab[[3]],listNMDSenviab[[4]])
+              unlistlistNMDSenvipa <- dplyr::bind_rows(listNMDSenvipa[[1]],listNMDSenvipa[[2]],listNMDSenvipa[[3]],listNMDSenvipa[[4]])
+
+#end of the preparation of the list of NMDS and envi
+              
+################################################################### graphics nmds x hand #####
+              colnames(unlistlistNMDSenvi)
+              
+              #nmds vs hand
+              
+              nmdsHAND<- ggplot(unlistlistNMDSenvi,aes(hand,MDSpa))+
+                geom_point(aes(color=surface,size=1))+
+                geom_smooth(aes(hand,MDSpa,color=surface),method = "lm",se=FALSE)+
+                facet_wrap(group~surface,scales="free") +
+                theme(strip.text.x = element_text(size=20))+
+                theme(strip.text = element_text(size=25))+
+                theme(legend.position="none")+
+                #geom_text(aes(label=Truni))+
+                theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+                ylab("NMDS")+ 
+                xlab("Soil Moisture")+
+                theme(axis.title.y = element_text(size = rel(1.8)))+
+                theme(axis.title.x = element_text(size = rel(1.8)))
+              nmdsHAND
+              
+              mfrow=c(1,1)
+              tiff(filename="RESU_nmds_hand.tiff", height = 10*mfrow[1], width = 10*mfrow[1],units = "in",res = 300) # set the pdf file
+              par(mfrow=mfrow, mar=c(0.2,0.2,0.2,0.2), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+              nmdsHAND
+              dev.off()
+
+              
+# end of graphics part 1
+
+##################################################################  mixed models #####
+############### model for ferns ####
+              
+              hidro <- listNMDSenvipa[[1]][which(listNMDSenvipa[[1]][,"hand"]!="NA"),]
+              length(unique(hidro$TrNumber))
+              length(hidro$subunit)
+              
+              mf1 <- lm(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1)
+              Ef1 <- rstandard(mf1)
+              boxplot(Ef1~TrNumber, data=hidro)
+              abline(0,0)
+              mf1.gls <- gls(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1.gls)
+              mf1.lme <- lme(MDS1~hand+decli+drain+soloslinearint, random = ~1+TrNumber|surface ,data=hidro);summary(mf1.lme)
+              anova(mf1.gls,mf1.lme)
+              
+              #FINAL MODEL
+              mf2.lme <- lmer(MDS1~hand+decli+drain+log(soloslinearint)+ (1|TrNumber)+(1|surface),data=hidro)
+              summary(mf2.lme)
+              plot(allEffects(mf2.lme),rug=FALSE)
+              #visreg(mf2.lme)
+              ranef(mf2.lme)
+              AIC(mf2.lme,mf2.lme1)
+              
+              aic_ferns <- AIC(mf2.lme)
+              hidro_output_ferns <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
+
+              #validation
+              Ef2 <- resid(mf2.lme)
+              F2  <- fitted(mf2.lme) 
+              plot(F2,Ef2)
+              boxplot(Ef2~TrNumber, data=hidro)
+              boxplot(Ef2~surface, data=hidro)
+              abline(0,0)
+              
+              plot(mf2.lme, surface~resid(.),abline=c(0,0))
+              plot(mf2.lme, resid(.)~fitted(.)|TrNumber)
+              plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
+              
+#################model for zing ####
+              
+              hidro <- listNMDSenvipa[[2]][which(listNMDSenvipa[[2]][,"hand"]!="NA"),]
+              length(unique(hidro$TrNumber))
+              length(hidro$subunit)
+              
+              mf1 <- lm(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1)
+              Ef1 <- rstandard(mf1)
+              boxplot(Ef1~TrNumber, data=hidro)
+              abline(0,0)
+              mf1.gls <- gls(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1.gls)
+              mf1.lme <- lme(MDS1~hand+decli+drain+soloslinearint, random = ~1+TrNumber|surface ,data=hidro);summary(mf1.lme)
+              anova(mf1.gls,mf1.lme)
+              
+              #FINAL MODEL
+              mf2.lme <- lmer(MDS1~hand+decli+drain+log(soloslinearint)+ (1|TrNumber)+(1|surface),data=hidro)
+              summary(mf2.lme)
+              plot(allEffects(mf2.lme),rug=FALSE)
+              #visreg(mf2.lme)
+              ranef(mf2.lme)
+              AIC(mf2.lme,mf2.lme1)
+              
+              aic_zing <- AIC(mf2.lme)
+              hidro_output_zing <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
+              
+              #validation
+              Ef2 <- resid(mf2.lme)
+              F2  <- fitted(mf2.lme) 
+              plot(F2,Ef2)
+              boxplot(Ef2~TrNumber, data=hidro)
+              boxplot(Ef2~surface, data=hidro)
+              abline(0,0)
+              
+              plot(mf2.lme, surface~resid(.),abline=c(0,0))
+              #plot(mf2.lme, resid(.)~fitted(.)|TrNumber)
+              #plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
+################# model for palms ####
+              
+              hidro <- listNMDSenvipa[[3]][which(listNMDSenvipa[[3]][,"hand"]!="NA"),]
+              length(unique(hidro$TrNumber))
+              length(hidro$subunit)
+              
+              mf1 <- lm(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1)
+              Ef1 <- rstandard(mf1)
+              boxplot(Ef1~TrNumber, data=hidro)
+              abline(0,0)
+              mf1.gls <- gls(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1.gls)
+              mf1.lme <- lme(MDS1~hand+decli+drain+soloslinearint, random = ~1+TrNumber|surface ,data=hidro);summary(mf1.lme)
+              anova(mf1.gls,mf1.lme)
+              
+              #FINAL MODEL
+              mf2.lme <- lmer(MDS1~hand+decli+drain+log(soloslinearint)+ (1|TrNumber)+(1|surface),data=hidro)
+              summary(mf2.lme)
+              plot(allEffects(mf2.lme),rug=FALSE)
+              #visreg(mf2.lme)
+              ranef(mf2.lme)
+              AIC(mf2.lme,mf2.lme1)
+              
+              aic_palms <- AIC(mf2.lme)
+              hidro_output_palms <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
+              
+              #validation
+              Ef2 <- resid(mf2.lme)
+              F2  <- fitted(mf2.lme) 
+              plot(F2,Ef2)
+              boxplot(Ef2~TrNumber, data=hidro)
+              boxplot(Ef2~surface, data=hidro)
+              abline(0,0)
+              
+              plot(mf2.lme, surface~resid(.),abline=c(0,0))
+              #plot(mf2.lme, resid(.)~fitted(.)|TrNumber)
+              #plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
+              
+################# model for melastomes ####
+              
+              hidro <- listNMDSenvipa[[4]][which(listNMDSenvipa[[4]][,"hand"]!="NA"),]
+              length(unique(hidro$TrNumber))
+              length(hidro$subunit)
+              
+              mf1 <- lm(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1)
+              Ef1 <- rstandard(mf1)
+              boxplot(Ef1~TrNumber, data=hidro)
+              abline(0,0)
+              mf1.gls <- gls(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1.gls)
+              mf1.lme <- lme(MDS1~hand+decli+drain+soloslinearint, random = ~1+TrNumber|surface ,data=hidro);summary(mf1.lme)
+              anova(mf1.gls,mf1.lme)
+              
+              #FINAL MODEL
+              mf2.lme <- lmer(MDS1~hand+decli+drain+log(soloslinearint)+ (1|TrNumber)+(1|surface),data=hidro)
+              summary(mf2.lme)
+              plot(allEffects(mf2.lme),rug=FALSE)
+              #visreg(mf2.lme)
+              ranef(mf2.lme)
+              AIC(mf2.lme,mf2.lme1)
+              
+              aic_melas <- AIC(mf2.lme)
+              hidro_output_melas <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
+              
+              #validation
+              Ef2 <- resid(mf2.lme)
+              F2  <- fitted(mf2.lme) 
+              plot(F2,Ef2)
+              boxplot(Ef2~TrNumber, data=hidro)
+              boxplot(Ef2~surface, data=hidro)
+              abline(0,0)
+              
+              plot(mf2.lme, surface~resid(.),abline=c(0,0))
+              #plot(mf2.lme, resid(.)~fitted(.)|TrNumber)
+              #plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
+# prepare a output table
+              
+              outputMM1 <- cbind(hidro_output_ferns,hidro_output_zing,hidro_output_palms,hidro_output_melas)
+              aics      <- c(aic_ferns,aic_zing,aic_palms,aic_melas)
+
+# end of the hydro modelling
+              
+              
+            
+####################################################### combine output tables ####
+
+              outputMMfinal <- round(rbind(outputMM1),2)
+                #outputMMfinal$model <- c(rep("Hydrological",7),rep("Edaphic",3))
+                groups_names <- c(rep("Ferns",2),rep("Zingiberales",2),rep("Arecaceae",2),rep("Melastomataceae",2), "model")
+                outputMMfinal <- rbind(groups_names,outputMMfinal,round(aics, 0))
+                t(outputMMfinal)
+                
+                write.csv(t(outputMMfinal),"RESU_outputMM.csv",row.names = TRUE)
+              
+####################################################### regression tress ####
+
+              
+              # regression tree
+
+              listTrees <- list()
+              listTreescp <- list()
+              
+              for (j in seq(listNMDSenvi)){
+              for (i in unique(listNMDSenvi[[j]]$surface)){
+                temp <- subset(listNMDSenvi[[j]], listNMDSenvi[[j]]$surface==i)
+                temp <- temp[which(temp$sum_of_basis!="NA"),]
+                temp <- temp[which(temp$hand!="NA"),]
+                tree <- mvpart(MDSpa~sum_of_basis+hand+decli,data=temp,plot.add = FALSE,cp=0.01,xv="min")
+                listTrees[[paste(i,j)]] <- tree
+                listTreescp[[paste(i,j)]] <-  tree$cptable[,1:3]
+              }
+              }
+
+########################################################################### graphic species tolerances along the HAND gradient ####          
+              
+              coefresult <- list()
+              
+              for(i in seq(length(listrelaabutotal))){
+                temp <- which(listspENVI[[i]][,"hand"]!="NA")
+                noColzero <- which(colSums(listrelaabutotal[[i]][temp,])!=0)
+                
+                fit_25 <- WA(listrelaabutotal[[i]][temp,noColzero], listspENVI[[i]][temp,"hand"], tolDW=TRUE) 
+                coefresult[[i]] <- as.data.frame(coefficients(fit_25))
+                coefresult[[i]]$tol_min <- coefresult[[i]]$Optima-coefresult[[i]]$Tolerances
+                coefresult[[i]]$tol_max <- coefresult[[i]]$Optima+coefresult[[i]]$Tolerances 
+                coefresult[[i]]$group   <- names(species25list)[[i]]
+                coefresult[[i]]$species <- rownames(coefresult[[i]])
+                
+                temp2 <- coefresult[[i]]$tol_min
+                temp2[temp2<0] <- 0
+                coefresult[[i]]$tol_min <- temp2
+              }
+              
+              unlistcoefresult <- plyr::ldply(coefresult) #transform the list into a single table
+              
+              
+              coefgraph_f <- ggplot(coefresult[[1]],aes(x=reorder(species,Optima),y=Optima,ymax=tol_max,ymin=tol_min)) +
+                geom_pointrange(position=position_dodge(width=0.5),size=0.8) +
+                ylab("")+
+                xlab("")+
+                theme_bw() +
+                coord_flip()+
+                theme(axis.text.y = element_blank())+
+                theme(axis.title = element_text(size = rel(1.8)),panel.grid.major = element_blank(),panel.grid.minor=element_blank())+
+                theme(legend.position="none")+
+                facet_wrap(~group,scales="free_x")+
+                theme(strip.text.x = element_text(size=12, face="bold"))
+              coefgraph_f
+              
+              coefgraph_z <- ggplot(coefresult[[2]],aes(x=reorder(species,Optima),y=Optima,ymax=tol_max,ymin=tol_min)) +
+                geom_pointrange(position=position_dodge(width=0.5),size=0.8) +
+                ylab("Soil Moisture (HAND)")+
+                xlab("")+
+                theme_bw() +
+                coord_flip()+
+                theme(axis.text.y = element_blank())+
+                theme(axis.title = element_text(size = rel(1.8)),panel.grid.major = element_blank(),panel.grid.minor=element_blank())+
+                theme(legend.position="none")+
+                facet_wrap(~group,scales="free_x")+
+                theme(strip.text.x = element_text(size=12, face="bold"))
+              coefgraph_z
+              
+              coefgraph_p <- ggplot(coefresult[[3]],aes(x=reorder(species,Optima),y=Optima,ymax=tol_max,ymin=tol_min)) +
+                geom_pointrange(position=position_dodge(width=0.5),size=0.8) +
+                ylab("")+
+                xlab("")+
+                theme_bw() +
+                coord_flip()+
+                theme(axis.text.y = element_blank())+
+                theme(axis.title = element_text(size = rel(1.8)),panel.grid.major = element_blank(),panel.grid.minor=element_blank())+
+                theme(legend.position="none")+
+                facet_wrap(~group,scales="free_x")+
+                theme(strip.text.x = element_text(size=12, face="bold"))
+              coefgraph_p
+              
+              mfrow=c(1,3)
+              tiff(filename="RESU_figure_species_tolerances.tiff", height = 7.5*mfrow[1], width = 17*mfrow[1],units = "in",res = 600) # set the pdf file
+              par(mfrow=mfrow, mar=c(0.2,0.2,0.2,0.2), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+              multiplot(coefgraph_f,coefgraph_z,coefgraph_p,cols = 3)
+              dev.off()
+              
+              #end of the tolerances analysis
+              
+       
+              
