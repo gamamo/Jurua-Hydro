@@ -340,7 +340,7 @@ m1.2 <- update(m1,start=ss,control=glmerControl(optimizer="bobyqa",optCtrl=list(
           
           mga <- ggarrange(melasTilesplot,melasTilesplotgeo,widths = c(4, 1))
     
-    
+     rfr
     ## tiles plots
     
     tiff(filename = "TilePlots_geo.tiff", height = 12, width = 11,units = "in",res = 180)
