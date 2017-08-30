@@ -9,7 +9,6 @@
       library(vegan)
       library(ggplot2)
       library(lme4)
-      library(GGally)
       library(plyr)
       library(dplyr)
       library(nlme)
@@ -19,6 +18,8 @@
       library(mvpart)
       library(rioja)
       library(palaeoSig)
+      library(rpart)
+      
 
       
       # this script starts with the preparation of table that gets the relative elevational of the transects in each
@@ -27,7 +28,8 @@
 ###################################### load the environmental data ####
       
       getwd()
-      setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses/dados ambientais originais")
+      #setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses/dados ambientais originais")
+      setwd("F:/workspace gabriel/Hidrologia do jurua/Analyses/dados ambientais originais") 
       dir()
       
       rm(list = ls())
@@ -82,7 +84,8 @@
                 colnames(topo_sel) <- c("topo","trnumber","sub")
                 
       #setwd("C:/workspace gabriel/hidrologia do jurua/camilo R script june 2017")
-      setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/camilo R script june 2017")
+      setwd("F:/workspace gabriel/Hidrologia do jurua/camilo R script june 2017")
+      #setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/camilo R script june 2017")
         
         
         #Load the bilinear extractions made in R by Camilo
@@ -228,7 +231,9 @@
                   }
                   print(table1)
                   
-                  setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+                  #setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+                  setwd("F:/workspace gabriel/Hidrologia do jurua/Analyses") 
+                  
                   write.csv(table1, "RESUtable1.csv",row.names = TRUE)
                   
 #end of table 1
@@ -258,7 +263,7 @@
             # these species tables were generated in a script called "script_preparacao_sp_analises.R"
             # the original files are in the folder "dados floristicos originais"
             
-            setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
+            #setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
           
             fern25 <- read.csv("ferns25_widetableWE.csv"     , stringsAsFactors = FALSE)
                   fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
@@ -320,7 +325,7 @@
                 coefresult[[i]]$tol_max <- coefresult[[i]]$Optima+coefresult[[i]]$Tolerances 
                 coefresult[[i]]$group   <- names(species25list)[[i]]
                 coefresult[[i]]$species <- rownames(coefresult[[i]])
-                
+
                   temp2 <- coefresult[[i]]$tol_min
                     temp2[temp2<0] <- 0
                   coefresult[[i]]$tol_min <- temp2
@@ -444,16 +449,6 @@
               nmdsHAND
               dev.off()
 
-
-              # regressions HAND vs NMDS
-              # COMPLETAR!!!!!
-              
-              a <- listNMDSenvi[[2]]
-              a <- a[a$surface=="Içá formation",]
-              reg <- lm(a$MDSpa~a$hand)
-              summary(reg)
-              
-              ggplotRegression(lm(MDSpa~hand,data=a))
               
 # end of graphics part 1
 
@@ -471,9 +466,10 @@
               anova(mf1.gls,mf1.lme)
               
               #FINAL MODEL
-              mf2.lme <- lme(MDSpa~hand*decli, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
+              mf2.lme <- lme(MDSpa~hand*decli*drain, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
               plot(allEffects(mf2.lme),rug=FALSE)
-              Anova(mf2.lme)
+              
+              hidro_output_ferns <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
 
               #validation
               Ef2 <- resid(mf2.lme,type="normalized")
@@ -499,9 +495,10 @@
               mf1.lme <- lme(MDSpa~hand*decli*drain, random = ~1+surface|TrNumber ,data=hidro);summary(mf1.lme)
               anova(mf1.gls,mf1.lme)
               
-              mf2.lme <- lme(MDSpa~hand*decli, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
+              mf2.lme <- lme(MDSpa~hand*decli*drain, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
               plot(allEffects(mf2.lme),rug=FALSE)
-              Anova(mf2.lme)
+              
+              hidro_output_zings <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
               
               #validation
               Ef2 <- resid(mf2.lme,type="normalized")
@@ -527,9 +524,10 @@
               mf1.lme <- lme(MDSpa~hand*decli*drain, random = ~1+surface|TrNumber ,data=hidro);summary(mf1.lme)
               anova(mf1.gls,mf1.lme)
               
-              mf2.lme <- lme(MDSpa~hand*decli, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
+              mf2.lme <- lme(MDSpa~hand*decli*drain, random = ~1+ surface|TrNumber,method = "REML" ,data=hidro);summary(mf2.lme)
               plot(allEffects(mf2.lme),rug=FALSE)
-              Anova(mf2.lme)
+              
+              hidro_output_palms <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
               
               #validation
               Ef2 <- resid(mf2.lme,type="normalized")
@@ -542,17 +540,22 @@
               plot(mf2.lme, surface~resid(.),abline=c(0,0))
               plot(mf2.lme, resid(., type="p")~fitted(.)|TrNumber)
               plot(mf2.lme, MDSpa ~fitted(.)|TrNumber )
+              
+# prepare a output table
+              
+              outputMM1 <- cbind(hidro_output_ferns,hidro_output_zings,hidro_output_palms)
 
 # end of the hydro modelling
               
 ############################################################# graphs nmds soil and hydro
-
-              unlistlistNMDSenvi_sub <- unlistlistNMDSenvi[which(unlistlistNMDSenvi$sum_of_basis!="NA"),]
               
+              unlistlistNMDSenvi_sub <- unlistlistNMDSenvi[which(unlistlistNMDSenvi$sum_of_basis!="NA"),]
+              unlistlistNMDSenvi_sub <- unlistlistNMDSenvi_sub[which(unlistlistNMDSenvi_sub$hand!="NA"),]
+
               nmdsedap1<- ggplot(unlistlistNMDSenvi_sub,aes(hand,MDSpa))+
                 geom_point(aes(color=surface,size=1))+
                 geom_smooth(aes(hand,MDSpa,color=surface),method = "lm",se=FALSE)+
-                facet_wrap(group~surface,scales="free") +
+                facet_wrap(group~surface) +
                 theme(strip.text.x = element_text(size=20))+
                 ylab("NMDS")+ 
                 xlab("Soil Moisture")+
@@ -564,10 +567,10 @@
                 theme(axis.title.x = element_text(size = rel(1.8)))
               nmdsedap1
               
-              nmdsedap2<- ggplot(unlistlistNMDSenvi_sub,aes(log(sum_of_basis),MDSpa))+
+              nmdsedap2<- ggplot(unlistlistNMDSenvi_sub,aes(sum_of_basis,MDSpa))+
                 geom_point(aes(color=surface,size=1))+
-                geom_smooth(aes(log(sum_of_basis),MDSpa,color=surface),method = "lm",se=FALSE)+
-                facet_wrap(group~surface,scales = "free") +
+                geom_smooth(aes(sum_of_basis,MDSpa,color=surface),method = "lm",se=FALSE)+
+                facet_wrap(group~surface) +
                 theme(strip.text.x = element_text(size=20))+
                 theme(strip.text = element_text(size=25))+
                 theme(legend.position="none")+
@@ -576,7 +579,8 @@
                 ylab("NMDS")+ 
                 xlab("Soil Fertility")+
                 theme(axis.title.y = element_text(size = rel(1.8)))+
-                theme(axis.title.x = element_text(size = rel(1.8)))
+                theme(axis.title.x = element_text(size = rel(1.8)))+
+                scale_x_log10()
               nmdsedap2
               
               mfrow=c(1,1)
@@ -584,7 +588,36 @@
               par(mfrow=mfrow, mar=c(0.2,0.2,0.2,0.2), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
               multiplot(nmdsedap1,nmdsedap2)
               dev.off()
+
+#end of graphics
+
+              #build a R2 table for the figure ####
+              listRhand <- list()
+              listRsoil <- list()
               
+              for(i in seq(listNMDSenvi)){
+                for(j in unique(listNMDSenvi[[1]]$surface)){
+                  temp <- subset(listNMDSenvi[[i]],listNMDSenvi[[i]]$surface==j)
+                    temp <- temp[which(temp$sum_of_basis!="NA"),]
+                    temp <- temp[which(temp$hand!="NA"),]
+                  reghand <- lm(temp$MDSpa~temp$hand)
+                  regsoil <- lm(temp$MDSpa~log(temp$sum_of_basis))
+                  listRhand[[paste(i,j)]] <- round(summary(reghand)$adj.r.squared,3)
+                  listRsoil[[paste(i,j)]] <- round(summary(regsoil)$adj.r.squared,3)
+                }
+              }
+
+a <- lm(temp$MDSpa~log(temp$sum_of_basis)+temp$hand)
+plot(a)
+              plot()unlistRhand <- plyr::ldply(listRhand)
+              unlistRsoil <- plyr::ldply(listRsoil)
+              
+              R2edaphic <- cbind(unlistRhand,unlistRsoil$V1)
+              colnames(R2edaphic)[1:3] <- c("Geological surface","adjR2 Soil Moisture","adjR2 Soil fertility")
+              plantgroup <- c(rep("Ferns",3),rep("Zingiberales",3),rep("Arecaceae",3))
+              R2edaphic <- cbind(plantgroup,R2edaphic)
+              
+              write.csv(R2edaphic,"RESU_R2_edaphic_figure.csv",row.names = FALSE)
               
 ############################################################## edaphic modelling mixed models
 ########## edaphic model ferns ####         
@@ -602,11 +635,12 @@
               summary(m.gls)
               
               ### MODELO FINAL
-              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1+surface|TrNumber, method = "REML",data = edaph)
+              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1|TrNumber, method = "REML",data = edaph)
               summary(m1.lme)
+
  
               plot(allEffects(m1.lme),rug=FALSE)
-              Anova(m1.lme)
+              edaph_output_ferns <- as.data.frame (Anova(m1.lme)[,c(1,3)])
 
               #validation
               E2 <- resid(m1.lme, type="normalized")
@@ -634,11 +668,11 @@
               summary(m.gls)
               
               ### MODELO FINAL
-              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1+surface|TrNumber, method = "REML",data = edaph)
+              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1|TrNumber, method = "REML",data = edaph)
               summary(m1.lme)
               
               plot(allEffects(m1.lme),rug=FALSE)
-              Anova(m1.lme)
+              edaph_output_zings <- as.data.frame (Anova(m1.lme)[,c(1,3)])
               
               #validation
               E2 <- resid(m1.lme, type="normalized")
@@ -666,47 +700,58 @@
               summary(m.gls)
               
               ### MODELO FINAL
-              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1+surface|TrNumber, method = "REML",data = edaph)
+              m1.lme <- lme(MDSpa ~ hand*log(sum_of_basis), random = ~1|TrNumber, method = "REML",data = edaph)
               summary(m1.lme)
               
+              plot(log(edaph$sum_of_basis),edaph$MDSpa)
               plot(allEffects(m1.lme),rug=FALSE)
-              Anova(m1.lme)
+              edaph_output_palms <- as.data.frame (Anova(m1.lme)[,c(1,3)])
               
               #validation
               E2 <- resid(m1.lme, type="normalized")
               F2 <- fitted(m1.lme)
               plot(F2,E2)
-              boxplot(E2~TrNumber, data=edaph)
+              boxplot(E2~surface, data=edaph)
               abline(0,0)
               
               plot(m1.lme, surface~resid(.),abline=c(0,0))
               plot(m1.lme, resid(., type="p")~fitted(.)|TrNumber)
               plot(m1.lme, MDSpa ~fitted(.)|TrNumber )
 
+# prepare the output table
+              
+              outputMM2 <- cbind(edaph_output_ferns,edaph_output_zings,edaph_output_palms)
+
 # end of the edaphic models
 
+####################################################### combine output tables ####
+
+              outputMMfinal <- round(rbind(outputMM1,outputMM2),2)
+                outputMMfinal$model <- c(rep("Hydrological",7),rep("Edaphic",3))
+                groups_names <- c(rep("Ferns",2),rep("Zingiberales",2),rep("Arecaceae",2), "model")
+                outputMMfinal <- rbind(groups_names,outputMMfinal)
+                
+                write.csv(outputMMfinal,"RESU_outputMM.csv",row.names = TRUE)
+              
 ####################################################### regression tress ####
-              ####COMPLETAR!!!!!!
+
               
               # regression tree
-              datatree <- solo_hand[,c("MDS1","sum_of_basis","hand","surface")]
-              datatree_a <- decostand(datatree[,-4],method="standardize",MARGIN = 2)
-              tree <- mvpart(MDS1~sum_of_basis+hand,size=3,data=datatree_a)
-              summary(tree)
+
+              listTrees <- list()
+              listTreescp <- list()
               
-              par(mfrow=c(1,3))
-              datatree_h <- subset(datatree, datatree$surface=="Hills")
-              tree_h <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_h)
-              summary(tree_h)
-              sort(datatree_h$sum_of_basis)
-              
-              datatree_p <- subset(datatree, datatree$surface=="Pebas")
-              tree_p <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_p)
-              summary(tree_p)
-              
-              datatree_t <- subset(datatree, datatree$surface=="Terrace")
-              tree_t <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_t)
-              summary(tree_t)    
-              
-              
+              for (j in seq(listNMDSenvi)){
+              for (i in unique(listNMDSenvi[[j]]$surface)){
+                temp <- subset(listNMDSenvi[[j]], listNMDSenvi[[j]]$surface==i)
+                temp <- temp[which(temp$sum_of_basis!="NA"),]
+                temp <- temp[which(temp$hand!="NA"),]
+                tree <- mvpart(MDSpa~sum_of_basis+hand+decli,data=temp,plot.add = FALSE,cp=0.01,xv="min")
+                listTrees[[paste(i,j)]] <- tree
+                listTreescp[[paste(i,j)]] <-  tree$cptable[,1:3]
+              }
+              }
+
+           
+       
               

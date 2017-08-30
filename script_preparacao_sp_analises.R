@@ -182,7 +182,7 @@ library(vegan)
               #select only epiphytes from the widetables
                       
                       widetableNE <-  widetable[,nonepiphytes$SpCode]
-                      widetableNE <-  widetable                      #if this line is on, it does not remove the epiphytes
+                      widetableWE <-  widetable                      #if this line is on, it does not remove the epiphytes
                       widetableNE <- cbind(widetable[1:2],widetableNE)
                               
                       
@@ -210,6 +210,7 @@ library(vegan)
                 
               write.csv(MIfernsNE, "MIferns_persubunit.csv")
               write.csv(widetableNE, "ferns25_widetableNE.csv",row.names = FALSE) 
+              write.csv(widetableWE, "ferns25_widetableWE.csv",row.names = FALSE)
    
 
 ########################### palms #############################

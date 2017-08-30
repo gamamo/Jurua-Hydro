@@ -17,7 +17,7 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
 
 #usar os transectos encontrados em hand53_ream_01$tr menos o tr 784
 #os tr 743,742,745,764,770,775,785 tiveram péssimos ajustes e no momento tb serão excluídos
-        toexclude <- as.factor(c(743,742,745,764,770,775,784,785,805))
+        toexclude <- as.factor(c(743,742,745,764,765,770,775,784,785,805))
         trvector <- as.factor(unique(hand53_ream_01$tr))
         trvector <- trvector[!trvector %in% toexclude]
         trvector  <- as.numeric(as.vector(unique(trvector)))
@@ -107,7 +107,7 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     topo_sel <- topo_sel[topo_sel$Truni %in% fern_mds$Truni,]
     head(topo_sel)
     
-    #calculate the differences of topo
+    topo
   
   #############################################################################
   
@@ -165,8 +165,18 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       head(toplot)
       summary(toplot)
       
-      subset(toplot,toplot$topodifford==14)
+      #classification of variables
+      toplot$decliclass <- NA
+      toplot$decliclass[toplot$decli<6] <- 1
+      toplot$decliclass[toplot$decli>=6] <- 2
+      toplot$decliclass <- as.factor(toplot$decliclass)
       
+      toplot$topoclass <- NA
+      toplot$topoclass[toplot$topo<=5] <- 1
+      toplot$topoclass[toplot$topo>5 & toplot$topo<=10] <- 2
+      toplot$topoclass[toplot$topo>10] <- 3
+      toplot$topoclass <- as.factor(toplot$topoclass)
+
 
     #plots
       g <- ggplot(toplot,aes(hand,MDS1))+
@@ -180,9 +190,9 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
         geom_point(aes(color=surface,size=3))+
         geom_smooth(aes(topo,MDS1,color=surface),method = "lm",se=FALSE)
       g1
-      g2<- ggplot(toplot,aes(hand,decli))+
+      g2<- ggplot(toplot,aes(hand,MDS1))+
         geom_point(aes(color=surface,size=3))+
-        geom_smooth(aes(hand,decli,color=surface),method = "lm",se=FALSE)+
+        geom_smooth(aes(hand,MDS1,color=surface),method = "lm",se=FALSE)+
         facet_wrap(~TrNumber, scales="free") +
         theme(strip.text.x = element_text(size=20))+
         theme(strip.text = element_text(size=25))+
@@ -203,9 +213,9 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       
 
       #FINAL MODEL
-      mf2.lme <- lme(MDS1~hand*decli, random = ~1+hand +surface|TrNumber,method = "REML" ,data=toplot);summary(mf2.lme)
+      mf2.lme <- lme(MDS1~hand*decli, random = ~1+ surface|TrNumber,method = "REML" ,data=toplot);summary(mf2.lme)
       plot(allEffects(mf2.lme),rug=FALSE)
-      summary(Anova(mf2.lme))
+      Anova(mf2.lme)
 
       #correlations between observations from the same tr
       0.943766^2/(0.943766^2+0.3449088^2)
@@ -222,7 +232,68 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
       plot(mf2.lme, resid(., type="p")~fitted(.)|TrNumber)
       plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
       
+      # hand vs slope per geo
+      g1<- ggplot(toplot,aes(hand,MDS1))+
+        geom_point(aes(color=surface,size=3))+
+        geom_smooth(aes(hand,MDS1),method = "lm",se=FALSE)+
+        facet_grid(surface~decliclass, scales="free")
+        
+      g1
+ 
       
+      
+      # hand per geo
+      g1<- ggplot(toplot,aes(hand,MDS1))+
+        geom_point(aes(color=surface,size=3))+
+        geom_smooth(aes(hand,MDS1,color=surface),method = "lm",se=FALSE)+
+        facet_grid(~surface)+
+        theme(strip.text.x = element_text(size=20))+
+        theme(strip.text = element_text(size=25))+
+        theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+        theme(legend.position="none")
+      g1
+      
+      # hands only at the hills
+      
+      toplot_h <- subset(toplot, toplot$surface=="Hills")
+      
+      g1<- ggplot(toplot_h,aes(hand,decli))+
+        geom_point(aes(size=1,color="white"))+
+        geom_smooth(aes(hand,decli,color=TrNumber),method = "lm",se=FALSE)+
+        geom_text(aes(label=Truni))+
+        facet_wrap(~drain)
+      g1
+      g1<- ggplot(toplot_h,aes(hand,MDS1))+
+        geom_point(aes(size=1,color="white"))+
+        geom_smooth(aes(hand,MDS1),method = "lm",se=FALSE)+
+        geom_text(aes(label=Truni))+
+        facet_wrap(~TrNumber)
+      g1
+      
+      #hands vs drain
+      g1<- ggplot(toplot,aes(hand,MDS1))+
+        geom_point()+
+        facet_wrap(~drain)
+      g1
+    
+      
+   summary(toplot$decli)
+   
+   #hand values per transect
+   a1 <- ggplot(toplot,aes(TrNumber,hand,color=surface))+
+     geom_boxplot()+
+     coord_flip()+
+     facet_wrap(~surface, scales="free")
+     
+   a1
+   
+   caprangesplot <- ggplot(datalongshared, aes(x=reorder(species,CAP), y=CAP, colour=local, ymax=max(CAP) ))+
+     geom_line(position=position_dodge(width=0.5),size=1.5)+
+     coord_flip()+
+     labs(y="CAP",x="")+
+     scale_y_continuous(breaks=seq(0,500,50))+
+     theme(panel.grid.minor = element_blank())
+   caprangesplot
     
  ########################################################################
  ########################################################################
@@ -268,14 +339,15 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     summary(m.gls)
     
     ### MODELO FINAL
-    m1.lme <- lme(MDS1 ~ hand+log(sum_of_basis), random = ~1+surface|TrNumber, method = "ML",data = solo_hand)
+    m1.lme <- lme(MDS1 ~ hand+log(sum_of_basis), random = ~1+surface|TrNumber, method = "ML",data = solo_hand);summary(m1.lme)
     
     #model with interaction
-    m1.lme.int <- lme(MDS1 ~ hand*log(sum_of_basis), random = ~1+surface|TrNumber,  method = "ML",data = solo_hand)
-    summary(m1.lme)
+    m1.lme.int <- lme(MDS1 ~ log(sum_of_basis)*hand, random = ~1+surface|TrNumber,  method = "ML",data = solo_hand)
+    
     summary(m1.lme.int)
     
-    plot(allEffects(m1.lme))
+    plot(allEffects(m1.lme),rug=FALSE)
+    plot(allEffects(m1.lme.int),rug=FALSE)
     Anova(m1.lme)
     
     anova(m1.lme.int,m1.lme)
@@ -292,36 +364,45 @@ setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
     plot(m1.lme, resid(., type="p")~fitted(.)|TrNumber)
     plot(m1.lme, MDS1 ~fitted(.)|TrNumber )
     
-
+    g3 <- ggplot(solo_hand,aes(log(sum_of_basis),MDS1))+
+      geom_point(aes(color=surface,size=3))+
+      geom_smooth(aes(log(sum_of_basis),MDS1,color=surface),method = "lm",se=FALSE)+
+      facet_wrap(~surface)+
+      theme(strip.text.x = element_text(size=20))+
+      theme(strip.text = element_text(size=25))+
+      theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+      theme(legend.position="none")
+    g3
+    g4 <- ggplot(solo_hand,aes(hand,MDS1))+
+      geom_point(aes(color=surface,size=3))+
+      geom_smooth(aes(hand,MDS1,color=surface),method = "lm",se=FALSE)+
+      facet_wrap(~surface)+
+      theme(strip.text.x = element_text(size=20))+
+      theme(strip.text = element_text(size=25))+
+      theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+      theme(legend.position="none")
+    g4
+multiplot(g3,g4)
   
   # regression tree
-  data <- solo_hand[,c("MDS1","sum_of_basis","hand")]
-  data <- decostand(data,method="standardize",MARGIN = 2)
-  tree <- mvpart(MDS1~sum_of_basis,data=data)
+  datatree <- solo_hand[,c("MDS1","sum_of_basis","hand","surface")]
+  datatree_a <- decostand(datatree[,-4],method="standardize",MARGIN = 2)
+  tree <- mvpart(MDS1~sum_of_basis+hand,size=3,data=datatree_a)
   summary(tree)
     
- 
-  fern_mds$Truni %in% solo_hand$Truni
-  solo_hand$Truni %in%fern_mds$Truni
-  unique(fern_mds$TrNumber)
-  unique(solo_hand$TrNumber)
+  par(mfrow=c(1,3))
+  datatree_h <- subset(datatree, datatree$surface=="Hills")
+    tree_h <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_h)
+    summary(tree_h)
+      sort(datatree_h$sum_of_basis)
+
+  datatree_p <- subset(datatree, datatree$surface=="Pebas")
+    tree_p <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_p)
+    summary(tree_p)
   
-  g2 <- ggplot(solo_hand,aes(sum_of_basis,MDS1))+
-    geom_point(aes(size=3))+
-    geom_smooth(aes(sum_of_basis,MDS1),method = "lm",se=FALSE)+
-    facet_wrap(~TrNumber, scales="free") +
-    theme(strip.text.x = element_text(size=20))+
-    theme(strip.text = element_text(size=25))
-  g2
-  
-  g3 <- ggplot(solo_hand,aes(hand,MDS1))+
-    geom_point(aes(size=3,color=surface))+
-    geom_smooth(aes(hand,MDS1),method = "lm",se=FALSE)+
-    facet_wrap(~TrNumber, scales="free") +
-    theme(strip.text.x = element_text(size=20))+
-    theme(strip.text = element_text(size=25))
-  g3
-  
+  datatree_t <- subset(datatree, datatree$surface=="Terrace")
+    tree_t <- mvpart(MDS1~sum_of_basis+hand,size=4,data=datatree_t)
+    summary(tree_t)    
 
   
  ########################################################################################

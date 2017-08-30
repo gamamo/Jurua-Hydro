@@ -24,8 +24,10 @@
       library(raster)
       library(sp)
       library(rgdal)
+      library(sjPlot)
       
 
+   
       
       # this script starts with the preparation of table that gets the relative elevational of the transects in each
       # geological formation, then come the graphics that relate environment and species
@@ -108,7 +110,6 @@
           srtm_alt <- extract(SRTM,cbind(hand53_ream_m0$lon,hand53_ream_m0$lat),method="bilinear" )
           hand53_ream_m0 <- cbind(hand53_ream_m0,srtm_alt)
           
-      
 ################################# prepare envi table ####
           
       tr <- seq(738,808)
@@ -242,16 +243,21 @@
                         aggregate(envi$sum_of_basis, list(envi$TrNumber), mean,na.rm=TRUE)[,-1 ],
                         aggregate(envi$decli, list(envi$TrNumber), min        )[,-1 ],
                         aggregate(envi$decli, list(envi$TrNumber), max        )[,-1 ],
-                        aggregate(envi$decli, list(envi$TrNumber), mean       )[,-1 ]
+                        aggregate(envi$decli, list(envi$TrNumber), mean       )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), min        )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), max        )[,-1 ],
+                        aggregate(envi$srtm_alt, list(envi$TrNumber), mean       )[,-1 ]
                 )
               
                 colnames(statsminmax) <- c("transect", "min_topo" , "max_topo", "mean_topo", "min_hand", "max_hand" , "mean_hand",
-                                           "min_cation", "max_cation" , "mean_cation","min_slope", "max_slope" , "mean_slope" )
+                                           "min_cation", "max_cation" , "mean_cation","min_slope", "max_slope" , "mean_slope",
+                                           "min_srtm", "max_srtm" , "mean_srtm")
                 
                 
-                table1 <- matrix(data = NA, nrow = 3, ncol = 4) # creat the table 
+                table1 <- matrix(data = NA, nrow = 3, ncol = 5) # creat the table 
                   rownames(table1) <- c("Içá formation" , "Solimões formation", "Rivers Terraces")
-                  colnames(table1) <- c("Topography" , "Soil Moisture (HAND)", "Soil Fertility (Cation concentration)", "Slope"    )
+                  colnames(table1) <- c("Field Topography" , "Soil Moisture (HAND)", "Soil Fertility (Cation concentration)", "Slope",
+                                        "SRTM")
                  
                   
                   for(i in 1:3){
@@ -270,13 +276,17 @@
                           table1[i,4] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_slope"]   ,na.rm = TRUE),2),
                                                "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_slope"],na.rm = TRUE),2),
                                                "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_slope"],na.rm = TRUE),2),")")
+                          
+                          table1[i,5] <- paste(round(mean(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"mean_srtm"]   ,na.rm = TRUE),2),
+                                               "(", round(min(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"min_srtm"],na.rm = TRUE),2),
+                                               "-", round(max(statsminmax[which(match(statsminmax$transect,geolist[[i]])>0),"max_srtm"],na.rm = TRUE),2),")")
                   }
                   print(table1)
                   
                   setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
                   #setwd("F:/workspace gabriel/Hidrologia do jurua/Analyses") 
                   
-                  write.csv(table1, "RESUtable1.csv",row.names = TRUE)
+                  write.csv(table1, "RESUtable2.csv",row.names = TRUE)
                   
 #end of table 1
                   
@@ -330,17 +340,21 @@
 
             palm25 <- read.csv("palms_jurua_subunit_gmm1.csv", stringsAsFactors = FALSE) # no need to delete rows for the palms: checked before
                   palm25 <- palm25[palm25$TrNumber %in% trvector,]
+                  
+            melas25 <- read.csv("Mel_Jurua_5x25m_table_gmm.csv", stringsAsFactors = FALSE)    
+                  melas25 <- melas25[melas25$TrNumber %in% trvector,]
                 
             # creat a list if the species data             
-              species25list <- list(fern25, zing25, palm25) 
-              names(species25list) <- c("Ferns", "Zingiberales", "Arecaceae")
+              species25list <- list(fern25, zing25, palm25,melas25) 
+              names(species25list) <- c("Ferns", "Zingiberales", "Arecaceae","Melastomataceae")
               
             # join all species into a single dataframe
               
-              join1 <- join(fern25, zing25,by = c("TrNumber","subunit"), type = "inner", match = "all")
-              join2 <- join(join1 , palm25,by = c("TrNumber","subunit"), type = "inner", match = "all")
-              
-              speciesall <- join2
+              join1 <- join(fern25, zing25 ,by = c("TrNumber","subunit"), type = "inner", match = "all")
+              join2 <- join(join1 , palm25 ,by = c("TrNumber","subunit"), type = "inner", match = "all")
+              join3 <- join(join2 , melas25,by = c("TrNumber","subunit"), type = "inner", match = "all")
+
+              speciesall <- join3
               speciesall_tomodel <- speciesall[,-c(1:2)]
               speciesall_tomodel_pa  <- decostand(speciesall_tomodel, method = "pa",   1)   #to transform to PA
               
@@ -348,7 +362,7 @@
               
               speciesenvi <- join(speciesall, envi,by = c("TrNumber","subunit"), type = "inner", match = "all" )
               
-         
+
             # call the environmental data
             # each plant object has a different number of rows. It has to be adequated in the environmental data: use the join::plyr 
             # calculate species optima and toleraces to the HAND gradient

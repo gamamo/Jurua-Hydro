@@ -15,6 +15,8 @@
       library(nlme)
       library(effects)
       library(car)
+      library(pROC)
+      library(mvpart)
       
       # this script starts with the preparation of table that gets the relative elevational of the transects in each
       # geological formation, then come the graphics that relate environment and species
@@ -211,9 +213,9 @@
             getwd()
             setwd("C:/workspace_Gabriel_Moulatlet/Hidrologia do jurua/Analyses")
           
-            fern25 <- read.csv("ferns25_widetableNE.csv"     , stringsAsFactors = FALSE)
+            fern25 <- read.csv("ferns25_widetableWE.csv"     , stringsAsFactors = FALSE)
                   fern25 <- fern25[-which(rowSums(fern25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences
-                  fern25 <- fern25[-c(795,1210),] # this 2 subunits were deleted because were too weird. Have to check it again
+                  #fern25 <- fern25[-c(795,1210),] # this 2 subunits were deleted because were too weird. Have to check it again
                 
             zing25 <- read.csv("zingdata_wide_gmm_v1.csv"    , stringsAsFactors = FALSE)
                   #zing25 <- zing25[-which(rowSums(zing25[,-c(1:2)])=="0"),]  # delete subunits with zero occurrences      
