@@ -63,6 +63,10 @@ optimaAll <- read.csv("otimosALL_gm.csv",sep=";",stringsAsFactors = FALSE)
   toplot2 <-  cbind(toplot,optSB$opt_mean)
   colnames(toplot2)
   
+  sbplot <- ggplot(toplot2,aes(hand,opt_mean))+
+      geom_point()
+  sbplot
+  
   sbplot1 <- ggplot(toplot2,aes(hand,opt_mean))+
     geom_point(aes(size=3,color=surface))+
     geom_smooth(aes(hand,opt_mean,color=surface),method = "lm",se=FALSE)+
@@ -77,6 +81,14 @@ optimaAll <- read.csv("otimosALL_gm.csv",sep=";",stringsAsFactors = FALSE)
     theme(strip.text.x = element_text(size=20))+
     theme(strip.text = element_text(size=25))
   sbplot2
+  
+  sbplot3 <- ggplot(toplot2,aes(hand,opt_mean))+
+    geom_point(aes(size=3,color=surface))+
+    geom_smooth(aes(hand,opt_mean),method = "lm",se=FALSE)+
+    #facet_wrap(~topoclass,scales ="free") +
+    theme(strip.text.x = element_text(size=20))+
+    theme(strip.text = element_text(size=25))
+  sbplot3
  
   
   
