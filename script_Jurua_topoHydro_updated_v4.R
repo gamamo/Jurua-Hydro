@@ -33,6 +33,7 @@
       library(pbkrtest)
       library(mgcv)
       library(voxel)
+      library(ggpubr)
       
 
       
@@ -403,6 +404,7 @@
             # calculate species optima and toleraces to the HAND gradient
               
               listrelaabutotal <- list() #only abu
+              listpatotal      <- list() #only pa
               listspENVI       <- list() #join abu and envi
               listspENVIpa     <- list() #join pa  and envi
               
@@ -412,6 +414,7 @@
                 sppa   <- decostand(species25list[[i]][-c(1:2)], method = "pa",   1)   #to transform to PA
                 
                 listrelaabutotal[[i]] <- sprela
+                listpatotal[[i]]      <- vegdist(sppa,method="bray")
                 listspENVI[[i]]       <- join(species25list[[i]], envi, by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
                 listspENVIpa[[i]]     <- join(cbind(species25list[[i]][c(1:2)],sppa), envi, by = c("TrNumber","subunit"), type = "left", match = "all") # and merge with envi
               }
@@ -525,7 +528,7 @@
 # end of graphics part 1
 
 ##################################################################  mixed models #####
-############### model for ferns ####
+############### models ####
               
               listNMDSmodelsPA <- list()
               listAnovas <- list()
@@ -545,75 +548,18 @@
               
               listaanovasNMDSmodels <- ldply(listAnovas,data.frame) 
               colnames(listaanovasNMDSmodels) <- c("Chisq", "p-value")
+              
+              #make an output table
               groups_names <- c(rep("Ferns",4),rep("Zingiberales",4),rep("Arecaceae",4),rep("Melastomataceae",4))
-              listaanovasNMDSmodels <- cbind(listaanovasNMDSmodels,groups_names)
-              
-              
-              
-              # testes
-              mf1 <- lm(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1)
-              Ef1 <- rstandard(mf1)
-              boxplot(Ef1~TrNumber, data=hidro)
-              abline(0,0)
-              mf1.gls <- gls(MDS1~hand+decli+drain+soloslinearint, data=hidro);summary(mf1.gls)
-              mf1.lme <- lme(MDS1~hand+decli+drain+soloslinearint, random = ~1+TrNumber|surface ,data=hidro);summary(mf1.lme)
-              anova(mf1.gls,mf1.lme)
-              
-              #FINAL MODEL
-              
-              
-              
-              m1 <- lmer(MDS1~log(1+hand)+decli+drain+log(soloslinearint)+ (1|TrNumber),data=hidro)
-              
-              
-              m0 <- lm(MDS1~log(1+hand)+decli+drain+log(soloslinearint),data=hidro)
-
-              summary(listNMDSmodelsPA[[i]])
-              Anova(listNMDSmodelsPA[[i]])
-              Anova(m2)
-              Anova(m3)
-             
-              visreg(listNMDSmodelsPA[[i]],scale = "response")
-              plot(allEffects(m4),rug=FALSE)
-              #visreg(mf2.lme)
-              ranef(mf2.lme)
-              AIC(m1,m2,m3)
-              
-              aic_ferns <- AIC(mf2.lme)
-              hidro_output_ferns <- as.data.frame(Anova(mf2.lme)[,c(1,3)])
-
-              #validation
-              Ef2 <- resid(mf2.lme)
-              F2  <- fitted(mf2.lme) 
-              plot(F2,Ef2)
-              boxplot(Ef2~TrNumber, data=hidro)
-              boxplot(Ef2~surface, data=hidro)
-              abline(0,0)
-              
-              plot(mf2.lme, surface~resid(.),abline=c(0,0))
-              plot(mf2.lme, resid(.)~fitted(.)|TrNumber)
-              plot(mf2.lme, MDS1 ~fitted(.)|TrNumber )
-              
-
-# prepare a output table
-              
-              outputMM1 <- cbind(hidro_output_ferns,hidro_output_zing,hidro_output_palms,hidro_output_melas)
-              aics      <- c(aic_ferns,aic_zing,aic_palms,aic_melas)
-
-# end of the hydro modelling
-              
-              
+              variables_names <-rep(c("HAND","Slope","Drainage","Cations"),4)
+              Aics <- c(rep(round(AIC(listNMDSmodelsPA[[1]]),0),4),
+                        rep(round(AIC(listNMDSmodelsPA[[2]]),0),4),
+                        rep(round(AIC(listNMDSmodelsPA[[3]]),0),4),
+                        rep(round(AIC(listNMDSmodelsPA[[4]]),0),4))
+              listaanovasNMDSmodels <- cbind(variables_names,listaanovasNMDSmodels,groups_names,Aics)
             
-####################################################### combine output tables ####
+              write.csv(listaanovasNMDSmodels,"RESU_LMM_NMDS.csv",row.names = TRUE)
 
-              outputMMfinal <- round(rbind(outputMM1),2)
-                #outputMMfinal$model <- c(rep("Hydrological",7),rep("Edaphic",3))
-                groups_names <- c(rep("Ferns",2),rep("Zingiberales",2),rep("Arecaceae",2),rep("Melastomataceae",2), "model")
-                outputMMfinal <- rbind(groups_names,outputMMfinal,round(aics, 0))
-                t(outputMMfinal)
-                
-                write.csv(t(outputMMfinal),"RESU_outputMM.csv",row.names = TRUE)
-              
 ####################################################### regression tress ####
 
               
@@ -632,10 +578,25 @@
                 listTreescp[[paste(i,j)]] <-  tree$cptable[,1:3]
               }
               }
+              
+              ##teste
 
-              j=1
-              plot(tree)
-              mvpart(MDS1+MDS2~log(soloslinearint)+log(1+hand)+decli,data=temp,plot.add = TRUE,cp=0.01,xv="min")
+              listTrees <- list()
+              listTreescp <- list()
+              
+              for (j in seq(listpatotal)){
+                for (i in unique(listNMDSenvipa[[j]]$surface)){
+                  temp <- subset(listNMDSenvipa[[j]], listNMDSenvipa[[j]]$surface==i)
+                  temp <- temp[which(temp$soloslinearint!="NA"),]
+                  temp <- temp[which(temp$hand!="NA"),]
+                  tree <- mvpart(listpatotal[[j]]~log(soloslinearint)+log(1+hand)+decli,data=temp,plot.add = FALSE,cp=0.01,xv="min")
+                  listTrees[[paste(i,j)]] <- tree
+                  listTreescp[[paste(i,j)]] <-  tree$cptable[,1:3]
+                }
+              }
+            
+              
+              j
 ########################################################################### graphic species tolerances along the HAND gradient ####          
               
               coefresult <- list()
