@@ -337,26 +337,24 @@
 #########################################################################################
 # plot the predicted values
     
-    datapredictplot <- datagraph_sub
-    levels(datapredictplot$Variable)
-    datapredictplot$Variable <- revalue(datapredictplot$Variable, c("decli"="Slope","drain"="Drainage","hand"="HAND",
-                                                        "poly(soloslinearint, 2)1"="Cation","poly(soloslinearint, 2)2"="Cation",
-                                                        "poly(hand, 2)1"="HAND","poly(hand, 2)2"="HAND","poly(decli, 2)1"="Slope",
-                                                        "poly(decli, 2)2"="Slope","poly(drain, 2)1"="Drainage","poly(drain, 2)2"="Drainage",
-                                                        "soloslinearint"="Cation"))
+    unlistcoefclean <- ldply(listcoefclean,data.frame)
+  
     
-    datapredictplotWF <- dcast(datapredictplot,modelName~Variable,fun.aggregate = length)
+    datapredictplotWF <- dcast(unlistcoefclean,modelName+speciesgroups~Variable,fun.aggregate = length)
     colnames(datapredictplotWF)[1] <-"Species"
     
     preparePredictdata <- datapredictplotWF[which(datapredictplotWF$HAND>=1 & datapredictplotWF$Cation>=1),]
     
     #select only species where hand and cations were significative
+    #this objects were taken formt the beggining of the script
     
     predictplot <- dfmaxpredic[dfmaxpredic$speciesnames %in% preparePredictdata$Species,]
-    predictplot$groups <- c(rep("Pteridophytes",25),rep("Zingiberales",16),rep("Palms",10),rep("Melastomataceae",5))
-    
+    predictplot <- cbind(predictplot,preparePredictdata$speciesgroups)
+    colnames(predictplot)[7] <- "groups"
 
-    redblue <- colorRampPalette(c("red","blue"),bias=.1,space="rgb")
+    colnames(predictplot)
+
+    #redblue <- colorRampPalette(c("red","blue"),bias=.1,space="rgb")
     
     Pplot <- ggplot(predictplot,aes(x=soloslinearint,y=hand,label=speciesnames))+
              geom_point(aes(color=groups))+
@@ -373,7 +371,6 @@
              ylab("HAND")+
              theme(legend.position = c(0.9,0.92),legend.title = element_blank(),legend.text = element_text(size = 12)) +
              theme(axis.ticks = element_blank(),axis.text = element_blank())
-             
     Pplot
     
     tiff(filename = "predic_plot.tiff", height = 8, width = 9.5,units = "in",res = 180)
