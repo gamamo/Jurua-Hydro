@@ -1,0 +1,195 @@
+library(raster)
+library(sp)
+library(rgdal)
+library(optimx)
+library(plyr) ## nesse pacote tem uma funcÃ£o que transforma listas em data.frames
+
+#faz o ajuste dos transectos normalizados entre 0 e 1
+
+#extrai os valores do srtm para o transecto considerando as distÃ¢ncia distcorr
+frtopo <- function(lon,lat,distcorr,srtm) {
+  #distancia aproximada do transecto usando coordenadas
+  disttr <- sqrt((lon[1]-lon[2])^2+(lat[1]-lat[2])^2)*111320.6*cos(mean(lat)*pi/180)
+  #corrigindo coordenadas para que transecto tenha tamanho exato do medido em campo
+  lon[2] <- max(distcorr)*(lon[2]-lon[1])/disttr+lon[1]
+  lat[2] <- max(distcorr)*(lat[2]-lat[1])/disttr+lat[1]
+  #calculando lat long para os pontos amostrados
+  lon <- approx(endpointssel$sub,lon,distcorr)$y
+  lat <- approx(endpointssel$sub,lat,distcorr)$y
+  alt <- extract(srtm,cbind(lon,lat),method='bilinear')
+  alt01 <- (alt-min(alt))/(max(alt)-min(alt)) #alt01
+  list(dist=distcorr,alt=alt01,lon=lon,lat=lat)
+}
+
+#normaliza o transecto entre 0 e 1
+frtopo01 <- function(lon,lat,distcorr,srtm) {
+  res <- frtopo(lon,lat,distcorr,srtm)
+  res$alt <- (res$alt-min(res$alt))/(max(res$alt)-min(res$alt)) #alt01
+  res
+}
+
+#calcula a soma quandrÃ¡tica da diferenÃ§a entre a topografia medida e a estimada pelo transecto ajustado
+#usa um fator de penalizaÃ§Ã£o caso o deslocamento mÃ¡ximo seja maior do que tolerance
+fr01 <- function(x,endpointssel,distcorr,srtm,topo01,tolerance) {
+  lon <- endpointssel$lon+x[1:2]
+  lat <- endpointssel$lat+x[3:4]
+  dist <- max(sqrt((endpointssel$lon-lon)^2+(endpointssel$lat-lat)^2))
+  if (dist > tolerance)
+  {
+    factor <- dist/tolerance
+  } else
+  {
+    factor <- 1
+  }
+  transect <- frtopo01(lon,lat,distcorr,srtm)
+  sum((topo01-transect$alt)^2)*factor
+}
+
+topography <- read.csv("topography.csv", header = TRUE, sep = ",", dec = ".", na.strings = NA)
+#output_deltas_01.csv contÃ©m valores de delta prÃ©-ajustados
+deltas <- read.csv("output_deltas_01.csv", header = TRUE, sep = ",", dec = ".", na.strings = NA)
+
+#excluir transectos com menos que duas medicÃµes de topografia
+tr <- as.integer(names(which(tapply(topography$topo,topography$tr,length)>1)))
+#trsel <- as.integer(names(which(tapply(topography$topo,topography$tr,length)>3)))
+#trsel <- topography[which(topography$tr %in% trsel),]
+#trsel <- topography
+#tr <- unique(trsel$tr)
+
+endpoints <- read.csv("endpoints_new2.csv", header = TRUE, sep = ",", dec = ".", na.strings = NA)
+srtm <- raster("SRTM_JURUA_1arc.tif",package="raster")
+geom <- extent(srtm)
+res <- res(srtm)
+
+##criar data.frame para armazenar os resultados
+listendpoints <- list()
+listtopo <- list()
+listtransects <- list()
+listtransects_ream <- list()
+listresults <- list()
+
+##fazer um looping para incluir todos os transectos
+####inicio do looping
+
+for(k in seq(length(tr))){
+  print(k)
+  trsel <- tr[k]
+  toposel <- topography[which(topography$tr == trsel),]
+  endpointssel <- endpoints[which(endpoints$tr == trsel),]
+  ##armazenar os end points numa lista
+  listendpoints[[k]] <- endpointssel
+
+  #descartando o transecto 782
+  if(tr[k] == 782){next}
+
+  #garantindo que o espacamento mÃ¡ximo entre pontos seja 25m
+  dist <- sort(unique(c(0:20 * 25,toposel$sub)))
+  topo <- approx(toposel$sub,toposel$topo,dist)$y
+
+  #corrigindo para distancias horizontais
+  distcorr <- cumsum(c(0,sqrt((dist[2:length(dist)]-dist[1:length(dist)-1])^2-(topo[2:length(topo)]-topo[1:length(topo)-1])^2)))
+  #atualizando endpoints
+  for(i in 2:nrow(endpointssel)){endpointssel[i,]$sub <- distcorr[which(dist == endpointssel[i,]$sub)]}
+
+  topo01 <- (topo-min(topo))/(max(topo)-min(topo))
+  plot(distcorr,topo01,type="l",xlab="distance(m)",ylab="topo",main=tr[k])
+  transectorig <- frtopo01(endpointssel$lon,endpointssel$lat,distcorr,srtm)
+  lines(distcorr,transectorig$alt,type="l",col="blue")
+
+  isel <- which(deltas$tr == trsel)
+  if (length(isel) != 0) {
+    result <- deltas[isel,]
+  } else {
+    result=data.frame(p1=0,p2=0,p3=0,p4=0,value=100000,row.names='BFGS')
+  }
+  t <- 0
+  while (t < 5){
+    print(c(t,result$value))
+    deltaini <- c(result$p1,result$p2,result$p3,result$p4)+(2*runif(4)-1)*res[1]
+    resultt <- optimx(deltaini, fr01, endpointssel=endpointssel, distcorr=distcorr, srtm=srtm, topo01=topo01, tolerance=2*res[1], method="BFGS")
+    if (resultt$value < result$value)
+    {
+      result <- resultt
+      t <- 0
+    }
+    else
+    {
+      t <- t+1
+    }
+  }
+  listresults[[k]] <- result
+
+  lon <- endpointssel$lon+c(result$p1,result$p2)
+  lat <- endpointssel$lat+c(result$p3,result$p4)
+  transect <- frtopo01(lon,lat,distcorr,srtm)
+  transect$tr <- tr[k]
+  lines(distcorr,transect$alt,type="l",col=rgb(1,0,0))
+
+  #plot(endpointssel$lon,endpointssel$lat,type='l',xlab="lon",ylab="lat",main=tr[k],asp=1)
+  #lines(transect$lon,transect$lat,type='l',col=rgb(1,0,0))
+
+  #armazear os resultados do objeto "transect" numa lista
+  listtopo[[k]] <- list(tr=tr[k],dist=distcorr,alt=topo01)
+  listtransects[[k]] <- transect
+  dist_ream <- approx(dist,distcorr,(0:19*25)+12.5)$y
+  alt_ream <- approx(transect$dist,transect$alt,dist_ream)$y
+  lat_ream <- approx(transect$dist,transect$lat,dist_ream)$y
+  lon_ream <- approx(transect$dist,transect$lon,dist_ream)$y
+  listtransects_ream[[k]] <- list(tr=tr[k],dist=dist_ream,alt=alt_ream,lon=lon_ream,lat=lat_ream)
+}
+##### fim do looping dos transectos
+
+##transformar a lista em data.frame
+combinelists <- ldply(listendpoints,data.frame)
+combinetopo <- ldply(listtopo,data.frame)
+combinetransects <- ldply(listtransects,data.frame)
+combinetransects_ream <- ldply(listtransects_ream,data.frame)
+
+##renomear o objeto listtransects
+#names(listtransects) <- unique(combinelists$tr)
+#names(listtopo) <- unique(combinelists$tr)
+#names(listresults) <- unique(combinelists$tr)
+
+## salvar em csv
+write.csv(combinelists, "output_endpointssel_01.csv", row.names = FALSE)
+write.csv(ldply(listresults,data.frame), "output_deltas_01.csv", row.names = FALSE)
+
+##fazer um grafico com todos os resultados
+mfrow <- c(7,7)
+pdf(file="graph_01a.pdf", height = 4*mfrow[1], width = 5*mfrow[1])
+par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+
+for (j in unique(combinelists$tr)) {
+  
+  if(j == 782){next}
+  plot(combinelists[combinelists$tr==j,"lon"],combinelists[combinelists$tr==j,"lat"],type='l',xlab="lon",ylab="lat",main=j,asp=1)
+  lines(combinetransects[combinetransects$tr==j,"lon"], combinetransects[combinetransects$tr==j,"lat"],type='l',col=rgb(1,0,0))
+}
+dev.off()
+
+##fazer um grafico com todos os resultados
+mfrow <- c(7,7)
+pdf(file="graph_01b.pdf", height = 4*mfrow[1], width = 5*mfrow[1])
+par(mfrow=mfrow, mar=c(3,3,2,0.5), oma=c(2,1,.5,0.5), mgp=c(1.7,0.6,0))
+
+for (j in unique(combinetransects$tr)) {
+  
+  if(j == 782){next}
+  plot(combinetopo[combinetopo$tr==j,"dist"],combinetopo[combinetopo$tr==j,"alt"],type='l',xlab="distance",ylab="topo",main=j)
+  lines(combinetransects[combinetransects$tr==j,"dist"],combinetransects[combinetransects$tr==j,"alt"],type='l',col=rgb(1,0,0))
+}
+dev.off()
+
+### como salvar em shapefile e plotar no mapa
+shape <- SpatialPointsDataFrame(combinelists[,c("lon","lat")], combinelists,proj4string=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"))
+writeOGR(shape, dsn = "endpoints_orig_01.shp", layer="shape", driver="ESRI Shapefile")
+
+shape <- SpatialPointsDataFrame(combinetransects[,c("lon","lat")], combinetransects,proj4string=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"))
+writeOGR(shape, dsn = "transect_adjust_01.shp", layer="shape", driver="ESRI Shapefile")
+
+shape <- SpatialPointsDataFrame(combinetransects_ream[,c("lon","lat")], combinetransects_ream,proj4string=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"))
+writeOGR(shape, dsn = "transect_adjust_m0_ream.shp", layer="shape", driver="ESRI Shapefile")
+
+plot(srtm)
+plot(shape,add=T)
+
