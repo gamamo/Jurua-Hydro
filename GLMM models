@@ -1,0 +1,815 @@
+# first eliminate all species with frequency less than 20 occurrences
+
+freqlist <- list()
+for (i in 1:length(speciesall_tomodel_pa)){
+  freqlist[[i]] <- data.frame(f = length(which(speciesall_tomodel_pa[,i]!=0)),
+                              sp = i)
+}
+freqdf <- ldply(freqlist,data.frame)
+freqdf <- freqdf[which(freqdf$f>20),]
+
+speciesall_tomodel_pa <- speciesall_tomodel_pa[,freqdf$sp]
+
+speciesall_tomodel_pa <- cbind(speciesall_tomodel_pa,speciesall[,c(1:2)])
+
+
+# join the species and the envi for the modelling and scale variables
+
+
+datamodelsPA <- join(speciesall_tomodel_pa, envi,by = c("TrNumber","subunit"), type = "inner", match = "all" ) 
+datamodelsPA <- datamodelsPA[, !duplicated(colnames(datamodelsPA))]
+datamodelsPAraw <- join(speciesall_tomodel_pa, envi,by = c("TrNumber","subunit"), type = "inner", match = "all" ) 
+datamodelsPAraw <- datamodelsPAraw[, !duplicated(colnames(datamodelsPAraw))]
+
+# species occorrence in geological surfaces
+colnames(datamodelsPAraw)
+
+head(datamodelsPAraw)
+
+melt1 <- melt(datamodelsPA[,c(1:202,214)]) #verify the "202" vale when re-run the code)
+colnames(melt1)
+melt1 <- melt1[which(melt1$value!=0),]
+spgeo <- dcast(melt1,variable~surface,value.var = "value")
+spgeo[which(spgeo$`Içá formation`!=0),"Içá formation"] <-1
+spgeo[which(spgeo$`River terraces`!=0),"River terraces"] <-1
+spgeo[which(spgeo$`Solimões formation`!=0),"Solimões formation"] <-1
+colnames(spgeo)[1] <- "Species"
+
+
+#scale the variables
+
+
+toscale <- c("hand","decli","drain","soloslinearint", "solostopoint","srtm_alt","topo")
+datamodelsPA[,toscale] <- scale(datamodelsPA[,toscale],center = TRUE, scale = TRUE)
+datamodelsPA$TrNumber <- as.factor(datamodelsPA$TrNumber)
+datamodelsPA$surface  <- as.factor(datamodelsPA$surface)
+
+
+#dredge modelling #############
+colnames(datamodelsPA)
+seq=seq(1,202) # selecionar as especies do dataframe datamodelsPA
+listoutputmodelsPA <- list()
+listmodelcall = list()
+listr2 = list()
+listAIC = list()
+for(i in seq){
+  
+  linesocc <- which(datamodelsPA[,i]==1)
+  transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+  surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+  subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+  
+  unique(subseocc$TrNumber)
+  
+  mglmfull <- glmer(subseocc[,i]~poly(decli,2)+poly(hand,2)+poly(drain,2)+(1|TrNumber),
+                  family = binomial,data=subseocc,na.action = na.pass)
+  
+  ######### tive que improvisar essa parte para poder gerar uma comparacao com modelos nulos 
+  # sem ter que mudar o código todo
+  # desativar isso se quiser rodar o dredge
+  
+  mglmnull = glmer(subseocc[,i]~(1|TrNumber),
+                   family = binomial,data=subseocc,na.action = na.pass)
+  
+  a= as.data.frame(matrix(NA, nrow = 1, ncol = 4))
+  colnames(a) =c("model","aic_m","aic_n", "result")
+  a[,1] = names(subseocc[i])
+  a[,2] = AICc(mglmfull,mglmnull)[1,2]
+  a[,3] = AICc(mglmfull,mglmnull)[2,2]
+  a[,4] = AICc(mglmfull,mglmnull)[1,2]>AICc(mglmfull,mglmnull)[2,2]
+  print(a)
+  listAIC[[i]] = a
+}
+
+resultsAIC = ldply(listAIC,data.frame)
+head(resultsAIC)
+write.csv(resultsAIC, "nullmodels.csv")
+######################################### até aqui################
+
+
+  
+  #visreg(mglmfull,scale = "response")
+  mselection <- dredge(mglmfull,extra = c("R^2", F = function(x) summary(x)$fstatistic[[1]]))
+  
+  
+  if(length(which(mselection$delta<2))>1){
+    MA.ests<-model.avg(mselection, subset= delta < 2|delta==0, revised.var = TRUE)
+    summarymselection<- summary(MA.ests)
+    coeftable <- summarymselection$coefmat.subset[,c(1,2,5)]
+    modelName <- names(datamodelsPA[i])
+    coeftable <- as.data.frame(cbind(coeftable,rep(modelName, length(coeftable[,1]))))
+    names(coeftable)[4] <- "modelName"
+    coeftable$Variable <- rownames(coeftable)
+    
+  } else { coeftable<- summary(get.models(mselection,1)[[1]])$coefficients[,c(1,2,4)]
+  modelName <- names(datamodelsPA[i])
+  
+  if(length(coeftable)==3){
+    coeftable = (c(coeftable, rep(modelName,length(coeftable[1]))))
+    names(coeftable)[4] <- "modelName"
+  } else {coeftable <- as.data.frame(cbind(coeftable, rep(modelName, length(coeftable[,1]))))
+  names(coeftable)[4] <- "modelName"
+  coeftable$Variable <- rownames(coeftable)
+  }
+  }
+  
+  r2= cbind(round(mselection$`R^2`[1],3),modelName)
+  
+  
+  #summarymselection<- summary(get.models(mselection,1)[[1]])
+  #mglmfinal <- glmer(as.formula(summarymselection$formula),family = binomial,
+  #                   data=subseocc,na.action = na.pass)
+  
+  listmodelcall[[i]] =    summarymselection$formula
+  listoutputmodelsPA[[i]] <- coeftable
+  listr2[[i]] = r2
+  
+}
+
+
+listoutputmodelsPA_table <- listoutputmodelsPA
+listoutputr2 = listr2
+
+toplotPAmodels <- ldply(listoutputmodelsPA_table,data.frame)
+toplotR2 = ldply(listoutputr2, data.frame)
+#write.csv(toplotPAmodels,"toplotmodels.csv")
+
+#toplotPAmodels <- toplotPAmodels[-which(toplotPAmodels$modelName=="indet"),] 
+toplotPAmodels = toplotPAmodels[!is.na(toplotPAmodels$Estimate),] # eliminar as linhas com NA
+toplotPAmodels = toplotPAmodels[,-6]
+
+#toplotPAmodels <- toplotPAmodels[-which(toplotPAmodels$modelName=="indet"),] # to discard the indets in the zingib file
+speciesgroups <- c(rep("Pteridophyte",262),rep("Zingiberales",294),rep("Palms",189),rep("Melastomataceae",165))
+toplotPAmodels <-cbind(toplotPAmodels,speciesgroups)
+
+names(toplotPAmodels)[1:3] <- c("Coefficient","SE","p")
+toplotPAmodels[,1:3] <- apply(toplotPAmodels[,1:3],2,function(x) as.numeric(as.character(x)))
+toplotPAmodels[,1:3] <- round(toplotPAmodels[,1:3],2)
+
+
+
+#how many transects and subunits
+length(unique(datamodelsPA$TrNumber))
+length(unique(datamodelsPA$Truni))
+
+
+
+#creat a colunm to indicate if the effect was positive or negative
+
+
+toplotPAmodels$effect <- NA
+toplotPAmodels[toplotPAmodels$Coefficient>0,"effect"] <- 1
+toplotPAmodels[toplotPAmodels$Coefficient<0,"effect"] <- -1
+toplotPAmodels$effect <- as.factor(toplotPAmodels$effect)
+
+#revalues variables
+
+toplotPAmodels$Variable <- revalue(toplotPAmodels$Variable, c("poly(hand, 2)1"="HAND1",
+                                                              "poly(hand, 2)2"="HAND2",
+                                                              "poly(decli, 2)1"="Slope1",
+                                                              "poly(decli, 2)2"="Slope2",
+                                                              "poly(drain, 2)1"="SDO1",
+                                                              "poly(drain, 2)2"="SDO2"))
+
+
+#join the geo info
+names(spgeo)[1] <- "modelName"
+toplotPAmodels <- left_join(toplotPAmodels,spgeo, by="modelName")
+toplotPAmodels$`Içá formation`[which(toplotPAmodels$`Içá formation`==1)] <- 3
+toplotPAmodels$`Solimões formation`[which(toplotPAmodels$`Solimões formation`==1)] <- 5
+
+toplotPAmodels$surface<- toplotPAmodels$`Içá formation`+toplotPAmodels$`Solimões formation`+toplotPAmodels$`River terraces`
+toplotPAmodels$surface[which(toplotPAmodels$surface==1)] <- "RT"
+toplotPAmodels$surface[which(toplotPAmodels$surface==3)] <- "IF"
+toplotPAmodels$surface[which(toplotPAmodels$surface==5)] <- "SF"
+toplotPAmodels$surface[which(toplotPAmodels$surface==4)] <- "IF+RT"
+toplotPAmodels$surface[which(toplotPAmodels$surface==6)] <- "SF+RT"
+toplotPAmodels$surface[which(toplotPAmodels$surface==8)] <- "SF+IF"
+toplotPAmodels$surface[which(toplotPAmodels$surface==9)] <- "IF+SF+RT"
+
+toplotPAmodels$IF <- toplotPAmodels$`Içá formation`
+toplotPAmodels$IF[which(toplotPAmodels$IF==3)] <- "IF"
+toplotPAmodels$SF <- toplotPAmodels$`Solimões formation`
+toplotPAmodels$SF[which(toplotPAmodels$SF==5)] <- "SF"
+toplotPAmodels$RT <- toplotPAmodels$`River terraces`
+toplotPAmodels$RT[which(toplotPAmodels$RT==1)] <- "RT"
+
+#how many species of each group were modelled in total?
+
+f <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Pteridophyte")
+length(unique(f$modelName))
+z <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Zingiberales")
+length(unique(z$modelName))
+p <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Palms")
+length(unique(p$modelName))
+m <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Melastomataceae")
+length(unique(m$modelName))
+
+toplotPAmodels <- subset(toplotPAmodels, toplotPAmodels$p<0.05)
+#toplotPAmodels <- subset(toplotPAmodels, toplotPAmodels$R2>0.30)
+toplotPAmodels <- subset(toplotPAmodels, toplotPAmodels$Variable!="(Intercept)")
+
+toplotPAmodels = left_join(toplotPAmodels,toplotR2, by="modelName")
+colnames(toplotPAmodels)
+colnames(toplotPAmodels)[15] = "R2"
+
+#how many species significant
+
+#how many species of each group were modelled with significance?
+
+f <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Pteridophyte")
+length(unique(f$modelName))
+z <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Zingiberales")
+length(unique(z$modelName))
+p <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Palms")
+length(unique(p$modelName))
+m <- subset(toplotPAmodels,toplotPAmodels$speciesgroups=="Melastomataceae")
+length(unique(m$modelName))
+
+
+
+write.csv(toplotPAmodels,"toplotPAmodels_v12_03_22.csv")
+#toplotPAmodels = read.csv(file="toplotPAmodels.csv",header = T)
+head(toplotPAmodels)
+#toplotPAmodels = toplotPAmodels[,-1]
+colnames(datamodelsPA)
+
+
+
+# topographic plots ######
+
+#plot 1 ferns        
+colnames(datamodelsPA)
+a=datamodelsPA[,c(24,203,214)] #Didym.trun
+
+a %>>%
+  group_by(TrNumber) %>>%
+  summarise(mean = mean(Didym.trun), n = n()) %>>%
+  filter(mean != 0)%>>%
+  (~b)%>>%
+  print(n = Inf)
+
+
+b %>>% pull(TrNumber)
+
+b = as.data.frame(b)
+bt = as.character(unique(b$TrNumber))
+
+
+spthf = ggplot(datamodelsPAraw[datamodelsPAraw$TrNumber %in% bt,],
+               aes(x=subunit,y=ifelse(Didym.trun==1,15,0)))+
+  geom_col(size=0.1)+
+  theme_bw()+
+  geom_line(aes(y=topo,x=subunit,linetype="dashed"),size=0.5)+
+  geom_line(aes(y=hand,x=subunit,linetype="solid"),size=0.5)+
+  labs(title= "Didymochlaena truncatula",subtitle="Pteridophyte", x="Transect length", y= "Topography")+
+  facet_wrap(~TrNumber)+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+  scale_linetype_manual(labels= c("Field Topography", "HAND"), values=c("solid", "dashed"))+
+  theme(legend.title = element_blank())+
+  theme(legend.position = "bottom", legend.text = element_text(size=18))
+spthf
+
+
+linesocc <- which(datamodelsPA[,"Didym.trun"]==1)
+transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+
+unique(subseocc$TrNumber)
+as.formula(listmodelcall[[24]])
+
+mglmfinal <- glmer(Didym.trun~poly(decli, 2) + poly(hand, 2) + poly(drain, 2) + (1 | TrNumber),family = binomial,
+                   data=subseocc,na.action = na.pass)
+summary(mglmfinal)
+#visreg(mglmfinal,scale="response")
+
+mglmtopo =  glmer(Didym.trun~topo +(1|TrNumber),
+                  family = binomial,data=subseocc,na.action = na.pass)
+summary(mglmtopo)
+#visreg(mglmtopo,scale = "response")
+
+sppf = visreg(mglmfinal,scale = "response",gg=T,rug=2,band=FALSE, 
+              line=list(col="black",lty=2))[[2]]+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("HAND") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppf
+
+sppf2 = visreg(mglmtopo,scale = "response",type="conditional",gg=T,rug=2,band=FALSE, 
+               line=list(col="black"))+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("Field Measured Topography") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppf2
+
+(spthf  |(sppf2 / sppf))+ plot_layout(widths = c(2,1))
+
+#plot 2 palms        
+colnames(datamodelsPA)
+a=datamodelsPA[,c(131,203,214)] # bactris killipi
+
+a %>>%
+  group_by(TrNumber) %>>%
+  summarise(mean = mean(bactkill), n = n()) %>>%
+  filter(mean != 0)%>>%
+  (~b)%>>%
+  print(n = Inf)
+
+
+b %>>% pull(TrNumber)
+
+b = as.data.frame(b)
+bt = as.character(unique(b$TrNumber))
+
+
+spthp = ggplot(datamodelsPAraw[datamodelsPAraw$TrNumber %in% bt,],
+               aes(x=subunit,y=ifelse(bactkill==1,15,0)))+
+  geom_col(size=0.1)+
+  theme_bw()+
+  geom_line(aes(y=topo,x=subunit,linetype="dashed"),size=0.5)+
+  geom_line(aes(y=hand,x=subunit,linetype="solid"),size=0.5)+
+  labs(title= "Bactris killipii",subtitle = "Palms", x="Transect length", y= "Topography")+
+  facet_wrap(~TrNumber)+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+  scale_linetype_manual(labels= c("Field Topography", "HAND"), values=c("solid", "dashed"))+
+  theme(legend.title = element_blank())+
+  theme(legend.position = "bottom", legend.text = element_text(size=18))
+spthp
+
+
+linesocc <- which(datamodelsPA[,"bactkill"]==1)
+transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+
+unique(subseocc$TrNumber)
+
+
+as.formula(listmodelcall[[131]])
+
+mglmfinal <- glmer(bactkill~poly(decli, 2) + poly(hand, 2) + poly(drain, 2) + (1 | TrNumber),family = binomial,
+                   data=subseocc,na.action = na.pass)
+summary(mglmfinal)
+#visreg(mglmfinal,scale="response")
+
+
+mglmtopo =  glmer(bactkill~topo +(1|TrNumber),
+                  family = binomial,data=subseocc,na.action = na.pass)
+summary(mglmtopo)
+#visreg(mglmtopo,scale = "response")
+
+sppp = visreg(mglmfinal,scale = "response",gg=T,rug=2,band=FALSE, 
+              line=list(col="black",lty=2))[[2]]+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("HAND") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppp
+
+sppp2 = visreg(mglmtopo,scale = "response",type="conditional",gg=T,rug=2,band=FALSE, 
+               line=list(col="black"))+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("Field Measured Topography") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppp2
+
+#plot 3 zing        
+colnames(datamodelsPA)
+a=datamodelsPA[,c(84,203,191)]
+
+a %>>%
+  group_by(TrNumber) %>>%
+  summarise(mean = mean(heli.spat), n = n()) %>>%
+  filter(mean != 0)%>>%
+  (~b)%>>%
+  print(n = Inf)
+
+
+b %>>% pull(TrNumber)
+
+b = as.data.frame(b)
+bt = as.character(unique(b$TrNumber))
+
+
+spthz = ggplot(datamodelsPAraw[datamodelsPAraw$TrNumber %in% bt,],
+               aes(x=subunit,y=ifelse(heli.spat==1,15,0)))+
+  geom_col(size=0.1)+
+  theme_bw()+
+  geom_line(aes(y=topo,x=subunit,linetype="dashed"),size=0.5)+
+  geom_line(aes(y=hand,x=subunit,linetype="solid"),size=0.5)+
+  labs(title= "Heliconia spathocircinata", subtitle = "Zingiberales", x="Transect length", y= "Topography")+
+  facet_wrap(~TrNumber)+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+  scale_linetype_manual(labels= c("Field Topography", "HAND"), values=c("solid", "dashed"))+
+  theme(legend.title = element_blank())+
+  theme(legend.position = "bottom", legend.text = element_text(size=18))
+spthz
+
+
+linesocc <- which(datamodelsPA[,"heli.spat"]==1)
+transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+
+unique(subseocc$TrNumber)
+
+as.formula(listmodelcall[[84]])
+mglmfinal <- glmer(heli.spat~poly(decli, 2) + poly(hand, 2) + poly(drain, 2) + (1 | TrNumber),
+                   family = binomial,data=subseocc,na.action = na.pass)
+#visreg(mglmfull,scale = "response")
+# summary(mglmfull)
+
+
+mglmtopo =  glmer(heli.spat~poly(topo,2) +(1|TrNumber),
+                  family = binomial,data=subseocc,na.action = na.pass)
+summary(mglmtopo)
+#visreg(mglmtopo,scale = "response")
+
+sppz = visreg(mglmfinal,scale = "response",gg=T,rug=2,band=FALSE, 
+              line=list(col="black",lty=2))[[2]]+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("HAND") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppz
+
+sppz2 = visreg(mglmtopo,scale = "response",type="conditional",gg=T,rug=2,band=FALSE, 
+               line=list(col="black"))+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("Field Measured Topography") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,1))
+sppz2        
+
+#plot 4 melas        
+colnames(datamodelsPA)
+a=datamodelsPA[,c(171,203,191)]
+
+a %>>%
+  group_by(TrNumber) %>>%
+  summarise(mean = mean(Lea.cand), n = n()) %>>%
+  filter(mean != 0)%>>%
+  (~b)%>>%
+  print(n = Inf)
+
+
+b %>>% pull(TrNumber)
+
+b = as.data.frame(b)
+bt = as.character(unique(b$TrNumber))
+
+
+spthm = ggplot(datamodelsPAraw[datamodelsPAraw$TrNumber %in% bt,],
+               aes(x=subunit,y=ifelse(Lea.cand==1,15,0)))+
+  geom_col(size=0.1)+
+  theme_bw()+
+  geom_line(aes(y=topo,x=subunit,linetype="dashed"),size=0.5)+
+  geom_line(aes(y=hand,x=subunit,linetype="solid"),size=0.5)+
+  labs(title= "Leandra candelabruum", subtitle="Melastomataceae", x="Transect length", y= "Topography")+
+  facet_wrap(~TrNumber)+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+  scale_linetype_manual(labels= c("Field Topography", "HAND"), values=c("solid", "dashed"))+
+  theme(legend.title = element_blank())+
+  theme(legend.position = "bottom", legend.text = element_text(size=18))
+spthm
+
+
+linesocc <- which(datamodelsPA[,"Lea.cand"]==1)
+transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+
+unique(subseocc$TrNumber)
+
+
+as.formula(listmodelcall[[171]])
+mglmfinal <- glmer(Lea.cand~poly(decli, 2) + poly(hand, 2) + poly(drain, 2) + (1 | TrNumber),
+                   family = binomial,data=subseocc,na.action = na.pass)
+
+
+mglmtopo =  glmer(Lea.cand~poly(topo,2) +(1|TrNumber),
+                  family = binomial,data=subseocc,na.action = na.pass)
+summary(mglmtopo)
+#visreg(mglmtopo,scale = "response")
+
+sppm = visreg(mglmfinal,scale = "response",gg=T,rug=2,band=FALSE, 
+              line=list(col="black",lty=2))[[2]]+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("HAND") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,0.1))
+sppm
+
+sppm2 = visreg(mglmtopo,scale = "response",type="conditional",gg=T,rug=2,band=FALSE, 
+               line=list(col="black"))+
+  theme_bw()+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  xlab("Field Measured Topography") + ylab("")+ ggtitle("",subtitle="")+
+  theme(axis.title.x = element_text(size=14),axis.text = element_text(size=12),
+        plot.title = element_text(face = "italic",size=20))+
+  scale_y_continuous(limits = c(0,0.1))
+sppm2        
+
+jpeg("figKH1.jpeg",units = "cm", width=25, height = 25, res = 180)
+spthf + (sppf2 / sppf) +
+  spthz + (sppz2 / sppz) +
+  plot_layout(ncol = 2,byrow = T,widths = c(2, 1),guides = "collect")&
+  theme(legend.position='bottom')
+dev.off()
+
+jpeg("figKH2.jpeg",units = "cm", width=25, height = 25, res = 180)   
+spthp + (sppp2 / sppp) +
+  spthm + (sppm2 / sppm) +
+  plot_layout(ncol = 2,byrow = T,widths = c(2, 1),guides = "collect")&
+  theme(legend.position='bottom')
+dev.off()
+
+jpeg("figKH3_v12_03_22.jpeg",units = "cm", width=25, height = 45, res = 180)   
+spthf + (sppf2 / sppf) +
+  spthz + (sppz2 / sppz) +  
+  spthp + (sppp2 / sppp) +
+  spthm + (sppm2 / sppm) +
+  plot_layout(ncol = 2,byrow = T,widths = c(2, 1),guides = "collect")&
+  theme(legend.position='bottom')
+dev.off()
+
+
+summary(predict(mglmfinal))
+summary(predict(mglmtopo))
+
+
+# compare topo x hand #####
+
+listanova = list()  
+for(j in 1:length(unique(toplotPAmodels$modelName))){
+  
+  sptopo = which(colnames(datamodelsPA)==unique(toplotPAmodels$modelName)[j])
+  
+  
+  linesocc <- which(datamodelsPA[,sptopo]==1)
+  transocc <- as.vector(unique(datamodelsPA[linesocc ,"TrNumber"]))
+  surfaocc =  unique(datamodelsPA[linesocc,"surface"])
+  subseocc <- subset(datamodelsPA, datamodelsPA$surface %in% surfaocc)
+  
+  i=sptopo
+  mglmfinal <- glmer(as.formula(listmodelcall[[sptopo]]),family = binomial,
+                     data=subseocc,na.action = na.pass)
+  summary(mglmfinal)
+  
+  mglmtopo =  glmer(subseocc[, i]~poly(topo,2) +(1|TrNumber),
+                    family = binomial,data=subseocc,na.action = na.pass)
+ 
+  
+  anovas =anova(mglmfinal,mglmtopo)
+  anovatables = as.data.frame(cbind(rownames(anovas),anovas$AIC,anovas$`Pr(>Chisq)`,colnames(subseocc[i])))
+  colnames(anovatables) = c("model","AIC","p","modelname")
+  
+  listanova[[j]] = anovatables
+}
+
+toplotanova <- ldply(listanova,data.frame)
+toplotanova$modelname
+
+speciesgroups <- c(rep("Pteridophyte",66),rep("Zingiberales",72),rep("Palms",50),rep("Melastomataceae",28))
+toplotanova <-cbind(toplotanova,speciesgroups)
+toplotanova[is.na(toplotanova$p),"p"] = 1000
+toplotanova[,2:3] <- apply(toplotanova[,2:3],2,function(x) as.numeric(as.character(x)))
+toplotanova[,2:3] <- round(toplotanova[,2:3],2)
+toplotanova[toplotanova$model=="mglmfinal","model"] = "Hydrology"
+toplotanova[toplotanova$model=="mglmtopo","model"] = "Topography"
+
+topocomparision = ggplot(toplotanova, aes(x=speciesgroups,y=AIC,fill=model))+
+  geom_boxplot()+
+  theme_bw()+
+  xlab("")+
+  theme(panel.border = element_rect(fill = NA, colour = "black"),
+        panel.grid.minor = element_blank(),panel.grid.major = element_blank())+
+  scale_fill_grey(start = 0.5,end = 0.8)+
+  theme(axis.title = element_text(size=18),axis.text = element_text(size=12))+
+  annotate(geom="text", label="A",x=1, y=850,size=8)
+topocomparision
+
+jpeg("topocomparision_v12_3_222.jpeg",units = "cm", width=16, height = 10, res = 180)   
+topocomparision
+dev.off()
+
+write.csv(toplotanova, "topoxhand.csv")
+
+
+# preparar table de resultados material suplementar
+SR = resultsAIC
+rt2 = subset(toplotanova, toplotanova$model=="Topography")
+rt2= rt2[,c(4,2,5)]
+colnames(rt2) = c("model","aic_t","plantgroup")
+SR = left_join(rt2,SR,by="model")
+
+# = subset(SR, SR$result=="TRUE")
+
+cor(SR$aic_m,SR$aic_t)
+
+dim(SR)
+SR
+
+write.csv(SR, "AICs_species.csv")
+# fazer um plot comparando AICS das especies
+head(resultsAIC)
+head(toplotanova)
+
+rh= resultsAIC[,1:2]
+rh$type = rep("H",length(rh[,1]))
+
+rt = subset(toplotanova, toplotanova$model=="Topography")
+rt= rt[,c(4,2)]
+colnames(rt) = c("model","aic_t")
+head(toplotanova)
+head(rt)
+rt$type2 = rep("T",length(rt[,1]))
+
+aa= left_join(rh,rt,by="model")
+
+
+corAIC =ggplot(SR, aes(y=aic_m,x=aic_t))+
+  xlab("AIC Topography")+
+  ylab("AIC Hydrology")+
+  geom_point()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        text = element_text(size=16))+
+  theme(legend.title=element_blank())+
+  theme(panel.border = element_rect(fill = NA, colour = "black"))+
+  annotate(geom="text", label="B",x=100, y=850,size=8)
+corAIC
+
+
+topocomparision + corAIC
+
+
+
+# tileplots####
+library(forcats)
+head(SR)
+
+toplotPAmodelsP = toplotPAmodels[which(toplotPAmodels$modelName %in%SR$model),]
+toplotPAmodelsP$modelName = as.factor(toplotPAmodelsP$modelName)
+fct_rev(toplotPAmodelsP$modelName)
+
+
+tilef <- ggplot(subset(toplotPAmodelsP,toplotPAmodelsP$speciesgroups=="Pteridophyte"),
+                aes(Variable,fct_rev(modelName),size= abs(Coefficient)))+
+  geom_point(aes(color=effect))+
+  scale_color_brewer(palette = "Set1")+
+  #scale_color_grey()+
+  theme_light()+
+  xlab("")+
+  ylab("")+
+  ggtitle("Pteridophyte")+
+  scale_size(range = c(1,5))+
+  theme(legend.position="none")+
+  theme(axis.text.x = element_text(size = 14)) +
+  theme(axis.text.y = element_text(size = 8))
+tilef
+
+tilez <- ggplot(subset(toplotPAmodelsP,toplotPAmodelsP$speciesgroups=="Zingiberales"),
+                aes(Variable,fct_rev(modelName),size= abs(Coefficient)))+
+  geom_point(aes(color=effect))+
+  scale_color_brewer(palette = "Set1")+
+  #scale_color_grey()+
+  theme_light()+
+  xlab("")+
+  ylab("")+
+  ggtitle("Zingiberales")+
+  scale_size(range = c(1,5))+
+  theme(legend.position="none")+
+  theme(axis.text.x = element_text(size = 14)) +
+  theme(axis.text.y = element_text(size = 8))
+tilez
+
+tilep <- ggplot(subset(toplotPAmodelsP,toplotPAmodelsP$speciesgroups=="Palms"),
+                aes(Variable,fct_rev(modelName),size= abs(Coefficient)))+
+  geom_point(aes(color=effect))+
+  #scale_color_grey()+
+  scale_color_brewer(palette = "Set1")+
+  theme_light()+
+  xlab("")+
+  ylab("")+
+  ggtitle("Palms")+
+  scale_size(range = c(1,5))+
+  theme(legend.position="none")+
+  theme(axis.text.x = element_text(size = 14)) +
+  theme(axis.text.y = element_text(size = 8))
+tilep
+
+tilem <- ggplot(subset(toplotPAmodelsP,toplotPAmodelsP$speciesgroups=="Melastomataceae"),
+                aes(Variable,fct_rev(modelName),size= abs(Coefficient)))+
+  geom_point(aes(color=effect))+
+  #scale_color_grey()+
+  scale_color_brewer(palette = "Set1")+
+  theme_light()+
+  xlab("")+
+  ylab("")+
+  ggtitle("Melastomataceae")+
+  scale_size(range = c(1,5))+
+  theme(legend.position="none")+
+  theme(axis.text.x = element_text(size = 14))+
+  theme(axis.text.y = element_text(size = 8)) 
+tilem
+
+#setwd("C:/Users/gabri/Dropbox/hidrologia do jurua/Analyses")
+
+#tiff(filename = "glm_tiles.tiff", height = 12, width = 11,units = "in",res = 300)
+jpeg(filename = "glmm_tiles_v12_03_22.jpg", height = 12, width = 11,units = "in",res = 300)
+tilef+ tilez+ tilep+ tilem+
+  plot_annotation(tag_levels = "a",tag_suffix = ")")
+dev.off()
+
+
+spgeo$modelName <- as.character(spgeo$modelName)
+resuGEO   <- spgeo[spgeo$modelName %in% toplotPAmodelsP$modelName,]
+
+resuGEO = toplotPAmodels[spgeo$modelName %in% toplotPAmodelsP$modelName,]
+colnames(resuGEO)
+resuGEO = resuGEO[,c(4,6,8,9,10)]
+
+resuGEO = toplotPAmodelsP[,c(4,6,8,9,10)]
+
+
+
+resuGEOmelt   <- melt(resuGEO)
+resuGEOmelt$variable <- revalue(resuGEOmelt$variable, c("Içá formation"="IF","River terraces"="RT","Solimões formation"="SF"))
+
+Tilesplotgeof <- ggplot(subset(resuGEOmelt,speciesgroups=="Pteridophyte"), aes(variable,fct_rev(modelName)))+
+  geom_tile(aes(fill=value), colour = "white")+
+  scale_fill_gradient(low = "white",high = "gray30")+
+  theme(legend.position="none")+
+  ggtitle("")+
+  ylab("")+
+  xlab("")+
+  theme(axis.text.y = element_blank(),axis.ticks.y=element_blank())+
+  theme(axis.text.x = element_text(size = 14))
+Tilesplotgeof
+
+Tilesplotgeoz <- ggplot(subset(resuGEOmelt,speciesgroups=="Zingiberales"), aes(variable,fct_rev(modelName)))+
+  geom_tile(aes(fill=value), colour = "white")+
+  scale_fill_gradient(low = "white",high = "gray30")+
+  theme(legend.position="none")+
+  ggtitle("")+
+  ylab("")+
+  xlab("")+
+  theme(axis.text.y = element_blank(),axis.ticks.y=element_blank())+
+  theme(axis.text.x = element_text(size = 14))
+Tilesplotgeoz
+
+Tilesplotgeop <- ggplot(subset(resuGEOmelt,speciesgroups=="Palms"), aes(variable,fct_rev(modelName)))+
+  geom_tile(aes(fill=value), colour = "white")+
+  scale_fill_gradient(low = "white",high = "gray30")+
+  theme(legend.position="none")+
+  ggtitle("")+
+  ylab("")+
+  xlab("")+
+  theme(axis.text.y = element_blank(),axis.ticks.y=element_blank())+
+  theme(axis.text.x = element_text(size = 14))
+Tilesplotgeop
+
+Tilesplotgeom <- ggplot(subset(resuGEOmelt,speciesgroups=="Melastomataceae"), aes(variable,fct_rev(modelName)))+
+  geom_tile(aes(fill=value), colour = "white")+
+  scale_fill_gradient(low = "white",high = "gray30")+
+  theme(legend.position="none")+
+  ggtitle("")+
+  ylab("")+
+  xlab("")+
+  theme(axis.text.y = element_blank(),axis.ticks.y=element_blank())+
+  theme(axis.text.x = element_text(size = 14))
+Tilesplotgeom
+
+
+
+jpeg(filename = "glmm_tiles_v12_03_22.jpg", height = 25, width = 45,units = "cm",res = 300)
+tilef+ Tilesplotgeof+ tilez+ Tilesplotgeoz+ tilep+ Tilesplotgeop + tilem+ Tilesplotgeom +
+  plot_layout(ncol= 4, byrow = TRUE,widths = c(2, 1))
+dev.off()
